@@ -1,0 +1,85 @@
+// Edge Function: admin_connectors
+//
+// GET    -> lista conectores (sin exponer la API key)
+// POST   -> crea un conector nuevo: guarda la API key en Supabase Vault y solo
+//           persiste en llm_connectors la referencia (secret_id), nunca la key en claro.
+// DELETE -> desactiva un conector (is_active = false; no se borra para preservar
+//           trazabilidad de qué conector generó qué preguntas)
+
+import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
+import { requireAdmin } from "../_shared/adminAuth.ts";
+import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
+
+interface CreateConnectorBody {
+  name: string;
+  provider: "anthropic" | "openai" | "openai_compatible" | "google";
+  model_id: string;
+  api_base_url?: string;
+  api_key: string;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const user = await getAuthenticatedUser(req);
+  if (!user) return errorResponse("No autenticado", 401);
+  if (!(await requireAdmin(user.id))) return errorResponse("No autorizado (requiere rol admin)", 403);
+
+  const admin = getSupabaseAdmin();
+
+  if (req.method === "GET") {
+    const { data, error } = await admin
+      .from("llm_connectors")
+      .select("id, name, provider, model_id, api_base_url, is_active, created_at")
+      .order("created_at", { ascending: false });
+    if (error) return errorResponse(error.message, 500);
+    return jsonResponse({ connectors: data });
+  }
+
+  if (req.method === "POST") {
+    const body: CreateConnectorBody = await req.json();
+    if (!body.name || !body.provider || !body.model_id || !body.api_key) {
+      return errorResponse("Faltan campos requeridos (name, provider, model_id, api_key)", 400);
+    }
+
+    // Guardar la API key en Supabase Vault (cifrada). Nunca se guarda en una tabla normal.
+    const { data: secretData, error: secretErr } = await admin.rpc("vault_create_secret_for_connector", {
+      p_secret_value: body.api_key,
+      p_name: `llm_connector_${body.name}_${Date.now()}`,
+    });
+
+    if (secretErr) return errorResponse(`Error guardando la key en Vault: ${secretErr.message}`, 500);
+
+    const { data: connector, error: insertErr } = await admin
+      .from("llm_connectors")
+      .insert({
+        name: body.name,
+        provider: body.provider,
+        model_id: body.model_id,
+        api_base_url: body.api_base_url ?? null,
+        secret_id: secretData,
+        created_by: user.id,
+      })
+      .select("id, name, provider, model_id, is_active, created_at")
+      .single();
+
+    if (insertErr) return errorResponse(insertErr.message, 500);
+    return jsonResponse({ connector }, 201);
+  }
+
+  if (req.method === "DELETE") {
+    const url = new URL(req.url);
+    const connectorId = url.searchParams.get("id");
+    if (!connectorId) return errorResponse("Falta el parámetro id", 400);
+
+    const { error } = await admin
+      .from("llm_connectors")
+      .update({ is_active: false })
+      .eq("id", connectorId);
+
+    if (error) return errorResponse(error.message, 500);
+    return jsonResponse({ deactivated: connectorId });
+  }
+
+  return errorResponse("Método no soportado", 405);
+});

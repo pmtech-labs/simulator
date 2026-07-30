@@ -1,0 +1,208 @@
+// Edge Function: admin_generation_jobs
+//
+// POST -> crea un job de generación con los parámetros elegidos en el panel
+//         (tareas ECO, approach, formato, dificultad, focus_tags, nº de preguntas,
+//         y qué conector LLM usar) y lo ejecuta de forma síncrona hasta completarlo
+//         (para volúmenes grandes, considerar mover a un worker asíncrono en v1.1;
+//         Edge Functions tienen un límite de tiempo de ejecución).
+// GET  -> lista jobs con su estado (para el dashboard del panel).
+//
+// El contenido generado SIEMPRE entra como status='draft'. Nunca se publica
+// automáticamente — pasa por scripts/validate_questions.ts (o su equivalente
+// aquí embebido) y luego por revisión humana.
+
+import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
+import { requireAdmin } from "../_shared/adminAuth.ts";
+import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { callLlm } from "../_shared/llmProviders.ts";
+
+interface CreateJobBody {
+  connector_id: string;
+  task_ids: string[];
+  approach?: "predictive" | "agile" | "hybrid";
+  format?: string;
+  count_requested: number;
+  difficulty_min?: number;
+  difficulty_max?: number;
+  focus_tags?: string[];
+}
+
+const FORBIDDEN_PATTERNS = [
+  /examen\s+oficial\s+de\s+pmi/i,
+  /certificaci[oó]n\s+oficial\s+garantizada/i,
+  /avalado\s+por\s+pmi/i,
+];
+
+function buildSystemPrompt() {
+  return `Eres un redactor experto de exámenes de certificación de project management, familiarizado con el
+Exam Content Outline (ECO) 2026 de PMI. Tu única fuente de verdad es la tarea y los enablers del ECO que se
+te proporcionan — NUNCA cites literalmente ni parafrasees de cerca el PMBOK u otro material protegido, y
+nunca menciones marcas registradas de PMI fuera del contexto normal de un examen de práctica no oficial.
+Genera escenarios realistas que evalúen juicio situacional, no memorización. Responde ÚNICAMENTE con JSON
+válido, sin texto adicional ni backticks:
+{"stem":"...","options":[{"id":"A","text":"..."},{"id":"B","text":"..."},{"id":"C","text":"..."},{"id":"D","text":"..."}],"correct_answer":["B"],"explanation":"...","difficulty":3}`;
+}
+
+function buildUserPrompt(task: any, approach: string, format: string, difficultyMin: number, difficultyMax: number, focusTags: string[]) {
+  const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
+  const focusLine = focusTags.length > 0 ? `\nTemas transversales a entretejer si es natural: ${focusTags.join(", ")}` : "";
+  return `Dominio ECO: ${task.eco_domains.name}
+Tarea: ${task.title}
+Enablers de referencia:
+${enablers}
+
+Enfoque de gestión de proyectos: ${approach}
+Formato: ${format}
+Dificultad objetivo: entre ${difficultyMin} y ${difficultyMax} (escala 1-5)${focusLine}
+
+Genera UNA pregunta de examen tipo PMP en español (neutro, España/LATAM), situacional, evaluando esta tarea.`;
+}
+
+function validateDraft(draft: any): string[] {
+  const issues: string[] = [];
+  if (!draft.stem || draft.stem.length < 20) issues.push("Enunciado demasiado corto");
+  if (!Array.isArray(draft.options) || draft.options.length < 2) issues.push("Menos de 2 opciones");
+  if (!Array.isArray(draft.correct_answer) || draft.correct_answer.length === 0) {
+    issues.push("correct_answer vacío");
+  } else if (Array.isArray(draft.options)) {
+    const ids = new Set(draft.options.map((o: any) => o.id));
+    if (!draft.correct_answer.every((id: string) => ids.has(id))) {
+      issues.push("correct_answer no coincide con options");
+    }
+  }
+  if (!draft.explanation || draft.explanation.length < 20) issues.push("Explicación ausente o corta");
+  const fullText = `${draft.stem ?? ""}\n${draft.explanation ?? ""}`;
+  for (const p of FORBIDDEN_PATTERNS) if (p.test(fullText)) issues.push("Contiene patrón no permitido");
+  return issues;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const user = await getAuthenticatedUser(req);
+  if (!user) return errorResponse("No autenticado", 401);
+  if (!(await requireAdmin(user.id))) return errorResponse("No autorizado (requiere rol admin)", 403);
+
+  const admin = getSupabaseAdmin();
+
+  if (req.method === "GET") {
+    const { data, error } = await admin
+      .from("generation_jobs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) return errorResponse(error.message, 500);
+    return jsonResponse({ jobs: data });
+  }
+
+  if (req.method !== "POST") return errorResponse("Método no soportado", 405);
+
+  const body: CreateJobBody = await req.json();
+  if (!body.connector_id || !body.task_ids?.length || !body.count_requested) {
+    return errorResponse("Faltan campos requeridos (connector_id, task_ids, count_requested)", 400);
+  }
+
+  const { data: connectorRow, error: connectorErr } = await admin
+    .from("llm_connectors")
+    .select("id, provider, model_id, api_base_url, secret_id, is_active")
+    .eq("id", body.connector_id)
+    .single();
+
+  if (connectorErr || !connectorRow) return errorResponse("Conector no encontrado", 404);
+  if (!connectorRow.is_active) return errorResponse("El conector está desactivado", 409);
+
+  const { data: apiKey, error: keyErr } = await admin.rpc("vault_read_secret_for_connector", {
+    p_secret_id: connectorRow.secret_id,
+  });
+  if (keyErr || !apiKey) return errorResponse("No se pudo leer la API key del conector", 500);
+
+  const { data: job, error: jobErr } = await admin
+    .from("generation_jobs")
+    .insert({
+      connector_id: body.connector_id,
+      requested_by: user.id,
+      task_ids: body.task_ids,
+      approach: body.approach ?? null,
+      format: body.format ?? "mc_single",
+      count_requested: body.count_requested,
+      difficulty_min: body.difficulty_min ?? 1,
+      difficulty_max: body.difficulty_max ?? 5,
+      focus_tags: body.focus_tags ?? [],
+      status: "running",
+      started_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (jobErr) return errorResponse(jobErr.message, 500);
+
+  const approaches = body.approach ? [body.approach] : ["predictive", "agile", "hybrid"];
+  let generated = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < body.count_requested; i++) {
+    const taskId = body.task_ids[i % body.task_ids.length];
+    const approach = approaches[i % approaches.length];
+
+    const { data: task } = await admin
+      .from("eco_tasks")
+      .select("id, title, eco_domains(name), eco_enablers(description)")
+      .eq("id", taskId)
+      .single();
+
+    if (!task) { failed++; errors.push(`Tarea ${taskId} no encontrada`); continue; }
+
+    try {
+      const result = await callLlm(
+        { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
+        buildSystemPrompt(),
+        buildUserPrompt(task, approach, body.format ?? "mc_single", body.difficulty_min ?? 1, body.difficulty_max ?? 5, body.focus_tags ?? []),
+      );
+
+      const cleaned = result.text.replace(/```json|```/g, "").trim();
+      const draft = JSON.parse(cleaned);
+      const issues = validateDraft(draft);
+
+      if (issues.length > 0) {
+        failed++;
+        errors.push(`Ítem ${i + 1}: ${issues.join("; ")}`);
+        continue;
+      }
+
+      await admin.from("questions").insert({
+        item_type: "standalone",
+        format: body.format ?? "mc_single",
+        stem: draft.stem,
+        options: draft.options,
+        correct_answer: draft.correct_answer,
+        explanation: draft.explanation,
+        task_id: taskId,
+        approach,
+        difficulty: draft.difficulty ?? 3,
+        focus_tags: body.focus_tags ?? [],
+        status: "draft", // nunca se publica automáticamente
+      });
+      generated++;
+    } catch (err) {
+      failed++;
+      errors.push(`Ítem ${i + 1}: ${(err as Error).message}`);
+    }
+  }
+
+  const { data: updatedJob, error: updateErr } = await admin
+    .from("generation_jobs")
+    .update({
+      status: "completed",
+      count_generated: generated,
+      count_failed: failed,
+      error_message: errors.length > 0 ? errors.slice(0, 20).join(" | ") : null,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", job.id)
+    .select()
+    .single();
+
+  if (updateErr) return errorResponse(updateErr.message, 500);
+  return jsonResponse({ job: updatedJob });
+});
