@@ -91,6 +91,19 @@ select cron.schedule(
 );
 ```
 
+## Notas y gotchas conocidos
+
+- **Crear usuarios manualmente por SQL en `auth.users`**: si alguna vez necesitas sembrar usuarios de
+  prueba directamente (en vez de por signup normal), varias columnas de tokens (`confirmation_token`,
+  `recovery_token`, `email_change_token_new`, `email_change`, `email_change_token_current`,
+  `reauthentication_token`, `phone_change`, `phone_change_token`) deben quedar como `''` (cadena vacía),
+  NUNCA `NULL`. Con `NULL`, GoTrue (el servicio de Auth) falla con
+  `error finding user: sql: Scan error ... converting NULL to string is unsupported` en cualquier flujo
+  que necesite leer ese usuario (recovery, magic link, incluso a veces el login normal). El método
+  soportado y recomendado sigue siendo la Admin API de Supabase Auth o el signup normal desde el frontend;
+  esto es solo para depurar si ya se sembró algo a mano.
+
+
 ## Webhook de Stripe
 
 Configurar en el Dashboard de Stripe → Developers → Webhooks:
