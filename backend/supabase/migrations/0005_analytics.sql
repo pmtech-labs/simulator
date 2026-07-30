@@ -34,6 +34,12 @@ begin
         correct = user_task_mastery.correct + case when p_is_correct then 1 else 0 end,
         last_attempt_at = now();
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 comment on function upsert_task_mastery is 'Actualiza incrementalmente el dominio de una tarea ECO para un usuario. Llamado por la Edge Function submit_answer.';
+
+-- Solo el backend (service_role, vía la Edge Function submit_answer) puede invocar esta función.
+-- Si un cliente anon/authenticated pudiera llamarla directamente por RPC, cualquier usuario
+-- podría inflar su propio mastery sin pasar por la corrección real de submit_answer.
+revoke execute on function upsert_task_mastery(uuid, uuid, boolean) from public, anon, authenticated;
+grant execute on function upsert_task_mastery(uuid, uuid, boolean) to service_role;

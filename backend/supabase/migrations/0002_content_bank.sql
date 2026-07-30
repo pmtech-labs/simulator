@@ -74,7 +74,7 @@ begin
   new.updated_at = now();
   return new;
 end;
-$$ language plpgsql;
+$$ language plpgsql set search_path = public;
 
 drop trigger if exists trg_case_clusters_updated on case_clusters;
 create trigger trg_case_clusters_updated before update on case_clusters
