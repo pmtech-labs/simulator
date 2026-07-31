@@ -251,6 +251,16 @@ Deno.serve(async (req) => {
     } catch (err) {
       failed++;
       errors.push(`Ítem ${i + 1}: ${(err as Error).message}`);
+
+      // Si las 2 primeras llamadas al conector fallan, es un problema sistémico
+      // (modelo inexistente, API key inválida, proveedor caído) — no tiene sentido
+      // repetir el mismo error hasta completar count_requested, solo gasta cuota y tiempo.
+      if (generated === 0 && failed >= 2) {
+        errors.push(
+          `Lote detenido tras ${failed} fallos consecutivos: revisa el modelo/clave del conector antes de reintentar.`,
+        );
+        break;
+      }
     }
   }
 
