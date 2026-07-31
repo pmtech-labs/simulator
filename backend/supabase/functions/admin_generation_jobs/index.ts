@@ -27,6 +27,17 @@ interface CreateJobBody {
   focus_tags?: string[];
 }
 
+const VALID_APPROACHES = ["predictive", "agile", "hybrid"];
+
+// El frontend puede mandar "mixed" (u otro valor no reconocido) para pedir mezcla
+// automática. La columna generation_jobs.approach es un enum de Postgres que solo
+// admite predictive/agile/hybrid — cualquier otro valor se normaliza a null (mezcla).
+function normalizeApproach(value: unknown): "predictive" | "agile" | "hybrid" | null {
+  return typeof value === "string" && VALID_APPROACHES.includes(value)
+    ? (value as "predictive" | "agile" | "hybrid")
+    : null;
+}
+
 const FORBIDDEN_PATTERNS = [
   /examen\s+oficial\s+de\s+pmi/i,
   /certificaci[oó]n\s+oficial\s+garantizada/i,
@@ -173,7 +184,7 @@ Deno.serve(async (req) => {
       connector_id: body.connector_id,
       requested_by: user.id,
       task_ids: body.task_ids,
-      approach: body.approach ?? null,
+      approach: normalizeApproach(body.approach),
       format: body.format ?? "mc_single",
       count_requested: body.count_requested,
       difficulty_min: body.difficulty_min ?? 1,
@@ -187,7 +198,8 @@ Deno.serve(async (req) => {
 
   if (jobErr) return errorResponse(jobErr.message, 500);
 
-  const approaches = body.approach ? [body.approach] : ["predictive", "agile", "hybrid"];
+  const normalizedApproach = normalizeApproach(body.approach);
+  const approaches = normalizedApproach ? [normalizedApproach] : ["predictive", "agile", "hybrid"];
   let generated = 0;
   let failed = 0;
   const errors: string[] = [];
