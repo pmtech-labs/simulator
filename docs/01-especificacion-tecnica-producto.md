@@ -25,6 +25,14 @@ El examen PMP cambió de versión el 9 de julio de 2026 (nuevo ECO, PMBOK 8). Pr
 
 ## 1. Taxonomía completa ECO 2026 (fuente: PDF oficial PMI, julio 2026)
 
+> **Corrección (31/07/2026):** la tabla de abajo se generó inicialmente a partir de un `web_fetch` del PDF
+> de PMI, con traducción/parafraseo propio. Al comparar contra el PDF oficial subido al conocimiento del
+> proyecto se detectaron diferencias de redacción (ej. la Tarea 3 de People es *"Dirigir al equipo de
+> proyecto"*, no "Liderar..."). La base de datos y el archivo `backend/supabase/seed/seed_eco_2026.sql` ya
+> están corregidos con el texto oficial verbatim — **ese seed es la fuente de verdad**, no esta tabla. Se
+> deja la tabla como referencia de lectura rápida, pero ante cualquier duda de redacción exacta, consultar
+> el seed o el PDF original.
+
 Esta taxonomía es la columna vertebral de la base de datos: **todo ítem del banco debe etiquetarse contra un `task_id`** (y opcionalmente enablers específicos). 3 dominios, 26 tareas totales (8 People + 10 Process + 8 Business Environment).
 
 ### DOMINIO I — PEOPLE (33%)
