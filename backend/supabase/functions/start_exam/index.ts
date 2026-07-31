@@ -249,23 +249,24 @@ function toBlocks(items: any[]): any[][] {
   return blocks;
 }
 
-// Reparte los bloques en N secciones lo más equilibradas posible (por nº de preguntas),
-// sin partir nunca un bloque (cluster) entre dos secciones.
-function distributeBlocks(items: any[], sectionCount: number): any[][] {
+// Estructura REAL del examen (ECO 2026, "Información sobre el examen de certificación de PMP"):
+// "El primer descanso se toma después de la sección de estudio de casos, y el segundo descanso
+// se toma aproximadamente a mitad de la parte de preguntas independientes del examen."
+// Sección 1 = TODOS los clusters de caso (agrupados). Secciones 2 y 3 = las preguntas
+// independientes (standalone), partidas por la mitad. No son 3 bloques genéricos de ~60.
+function distributeBlocks(items: any[], _sectionCount: number): any[][] {
   const blocks = toBlocks(items);
-  const targetPerSection = Math.ceil(items.length / sectionCount);
-  const sections: any[][] = Array.from({ length: sectionCount }, () => []);
-  let sectionIdx = 0;
+  const caseBlocks = blocks.filter((b) => b[0].cluster_id);
+  const standaloneBlocks = blocks.filter((b) => !b[0].cluster_id);
 
-  for (const block of blocks) {
-    const currentCount = sections[sectionIdx].reduce((sum, b) => sum + b.length, 0);
-    if (currentCount + block.length > targetPerSection && sectionIdx < sectionCount - 1) {
-      sectionIdx++;
-    }
-    sections[sectionIdx].push(...block);
-  }
+  const section1 = caseBlocks.flat();
 
-  return sections;
+  const standaloneItems = standaloneBlocks.flat();
+  const midpoint = Math.ceil(standaloneItems.length / 2);
+  const section2 = standaloneItems.slice(0, midpoint);
+  const section3 = standaloneItems.slice(midpoint);
+
+  return [section1, section2, section3];
 }
 
 function assignSections(items: any[], sectionCount: number, totalSeconds: number) {

@@ -6,6 +6,18 @@
 
 ## 1. Pantalla de examen — 3 secciones, no un timer único
 
+> **Importante**: las 3 secciones NO son tercios de igual tamaño (no son ~60/60/60). Según el ECO 2026
+> ("Información sobre el examen de certificación de PMP"): *"El primer descanso se toma después de la
+> sección de estudio de casos, y el segundo descanso se toma aproximadamente a mitad de la parte de
+> preguntas independientes"*. Por tanto:
+> - **Sección 1** = TODOS los clusters de caso del examen (puede ser un número pequeño de preguntas si hay
+>   pocos clusters, o más si hay varios — no asumas un tamaño fijo).
+> - **Secciones 2 y 3** = las preguntas independientes (standalone), partidas por la mitad.
+>
+> Etiqueta las secciones en la UI como **"Estudio de casos"** (sección 1) y **"Preguntas independientes —
+> parte 1 / parte 2"** (secciones 2 y 3), no como "Sección 1/2/3" genérico — ayuda al candidato a entender
+> qué tipo de contenido le espera en cada bloque, igual que en el examen real.
+
 La respuesta de `start_exam` en modo `full_sim` ahora incluye un array `sections` (3 elementos: `count` y
 `seconds` de cada una) y cada ítem trae `section_number`. Ajusta la pantalla de examen:
 
