@@ -11,13 +11,14 @@
 import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
-type ExamMode = "full_sim" | "domain_drill" | "case_only" | "custom";
+type ExamMode = "full_sim" | "domain_drill" | "case_only" | "custom" | "unit_quiz" | "cumulative";
 
 interface StartExamBody {
   mode: ExamMode;
   domain_codes?: string[];
   task_ids?: string[];
   question_count?: number;
+  unit_id?: string; // requerido para unit_quiz y cumulative
 }
 
 const FULL_SIM_TOTAL = 180;
@@ -65,6 +66,40 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Resolver unit_id -> task_ids para los modos ligados al currículo propio (no ECO directamente).
+  let resolvedTaskIds = body.task_ids;
+  if (body.mode === "unit_quiz" || body.mode === "cumulative") {
+    if (!body.unit_id) return errorResponse("Falta unit_id para este modo", 400);
+
+    const { data: targetUnit, error: unitErr } = await admin
+      .from("course_units")
+      .select("id, sequence, status")
+      .eq("id", body.unit_id)
+      .single();
+    if (unitErr || !targetUnit) return errorResponse("Unidad de currículo no encontrada", 404);
+    if (targetUnit.status !== "published") return errorResponse("Esta unidad aún no está publicada", 403);
+
+    if (body.mode === "unit_quiz") {
+      const { data: mappings } = await admin
+        .from("course_unit_tasks")
+        .select("task_id")
+        .eq("course_unit_id", body.unit_id);
+      resolvedTaskIds = (mappings ?? []).map((m: any) => m.task_id);
+    } else {
+      // cumulative: todas las tareas de las unidades publicadas con sequence <= la unidad objetivo.
+      const { data: mappings } = await admin
+        .from("course_unit_tasks")
+        .select("task_id, course_units!inner(sequence, status)")
+        .lte("course_units.sequence", targetUnit.sequence)
+        .eq("course_units.status", "published");
+      resolvedTaskIds = [...new Set((mappings ?? []).map((m: any) => m.task_id))];
+    }
+
+    if (!resolvedTaskIds || resolvedTaskIds.length === 0) {
+      return errorResponse("Esta unidad no tiene tareas ECO asociadas todavía", 409);
+    }
+  }
+
   let query = admin
     .from("questions")
     .select("id, item_type, format, cluster_id, task_id, approach, eco_tasks(domain_id, eco_domains(code))")
@@ -76,8 +111,8 @@ Deno.serve(async (req) => {
   if (body.mode === "case_only") {
     query = query.eq("item_type", "case_child");
   }
-  if ((body.mode === "domain_drill" || body.mode === "custom") && body.task_ids?.length) {
-    query = query.in("task_id", body.task_ids);
+  if ((body.mode === "domain_drill" || body.mode === "custom" || body.mode === "unit_quiz" || body.mode === "cumulative") && resolvedTaskIds?.length) {
+    query = query.in("task_id", resolvedTaskIds);
   }
 
   const { data: pool, error: poolErr } = await query;

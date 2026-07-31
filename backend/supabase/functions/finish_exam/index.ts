@@ -15,6 +15,12 @@ interface FinishExamBody {
   exam_id: string;
 }
 
+const RESULT_DISCLAIMER =
+  "Este resultado es una estimación razonada de tu nivel de preparación: entrena tu " +
+  "razonamiento, tu concentración y tu gestión del tiempo, pero no garantiza el aprobado en " +
+  "el examen real. Complementa esta práctica con estudio estructurado, revisión de tus " +
+  "errores, práctica progresiva y tu propia experiencia profesional.";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -106,6 +112,7 @@ Deno.serve(async (req) => {
     score_by_approach: scoreByApproach,
     new_items_count: newItemsCount,
     repeated_items_count: repeatedItemsCount,
+    disclaimer: RESULT_DISCLAIMER,
     interpretation_note: repeatedItemsCount > total * 0.3
       ? "Más del 30% de las preguntas ya las habías respondido antes: este resultado puede sobreestimar tu preparación real."
       : null,
