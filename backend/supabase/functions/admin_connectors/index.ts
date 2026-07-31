@@ -37,12 +37,28 @@ Deno.serve(async (req) => {
 
     const { data, error, count } = await admin
       .from("llm_connectors")
-      .select("id, name, provider, model_id, api_base_url, is_active, created_at", { count: "exact" })
+      .select("id, name, provider, model_id, api_base_url, is_active, is_default, created_at", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) return errorResponse(error.message, 500);
     return jsonResponse({ data, total: count ?? data?.length ?? 0 });
+  }
+
+  if (req.method === "PATCH") {
+    // Marca un conector como predeterminado (exclusivo: el trigger de BD desmarca los demás).
+    const body: { id: string; is_default?: boolean } = await req.json();
+    if (!body.id) return errorResponse("Falta el campo id", 400);
+
+    const { data: connector, error } = await admin
+      .from("llm_connectors")
+      .update({ is_default: body.is_default ?? true })
+      .eq("id", body.id)
+      .select("id, name, is_default")
+      .single();
+
+    if (error) return errorResponse(error.message, 500);
+    return jsonResponse({ connector });
   }
 
   if (req.method === "POST") {
