@@ -25,6 +25,8 @@ const FORBIDDEN_PATTERNS = [
   /avalado\s+por\s+pmi/i,
 ];
 
+const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"];
+
 interface ValidationResult {
   questionId: string;
   valid: boolean;
@@ -42,6 +44,16 @@ function validateQuestion(q: any): ValidationResult {
     const optionIds = new Set((q.options ?? []).map((o: any) => o.id));
     const allCorrectAreOptions = q.correct_answer.every((id: string) => optionIds.has(id));
     if (!allCorrectAreOptions) issues.push("correct_answer contiene ids que no están en options");
+
+    for (const opt of q.options ?? []) {
+      const isCorrectOption = q.correct_answer.includes(opt.id);
+      if (!isCorrectOption) {
+        if (!opt.error_type) issues.push(`Opción ${opt.id} (distractor) sin error_type`);
+        else if (!VALID_ERROR_TYPES.includes(opt.error_type)) {
+          issues.push(`Opción ${opt.id} con error_type inválido: ${opt.error_type}`);
+        }
+      }
+    }
   }
   if (!q.explanation || q.explanation.trim().length < 20) issues.push("Explicación ausente o demasiado corta");
   if (!q.stem || q.stem.trim().length < 20) issues.push("Enunciado demasiado corto");

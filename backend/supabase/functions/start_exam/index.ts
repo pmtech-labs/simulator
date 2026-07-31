@@ -5,8 +5,8 @@
 //  - Split de enfoque 40% predictive / 60% agile+hybrid
 //  - Bloques de case_cluster como unidad atómica (todas sus preguntas hijas, consecutivas)
 //  - Restricciones de plan (básica no incluye practicum completo salvo que el plan lo indique)
-//
-// Ver especificación técnica, sección 3 (esquema) y sección 3 del prompt de Cowork.
+//  - Estructura real de 3 secciones cronometradas independientes en full_sim (no un timer único),
+//    sin partir nunca un cluster de caso entre dos secciones
 
 import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
@@ -15,19 +15,20 @@ type ExamMode = "full_sim" | "domain_drill" | "case_only" | "custom";
 
 interface StartExamBody {
   mode: ExamMode;
-  domain_codes?: string[]; // para domain_drill / custom
-  task_ids?: string[]; // para domain_drill / custom
-  question_count?: number; // para domain_drill / custom, ignorado en full_sim
+  domain_codes?: string[];
+  task_ids?: string[];
+  question_count?: number;
 }
 
 const FULL_SIM_TOTAL = 180;
-const FULL_SIM_PRETEST = 10;
+const FULL_SIM_SECTIONS = 3;
+const FULL_SIM_TOTAL_SECONDS = 240 * 60;
 const DOMAIN_WEIGHTS: Record<string, number> = {
   people: 0.33,
   process: 0.41,
   business_environment: 0.26,
 };
-const PREDICTIVE_SHARE = 0.4; // 40% predictive, 60% agile+hybrid combinados
+const PREDICTIVE_SHARE = 0.4;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -38,7 +39,6 @@ Deno.serve(async (req) => {
   const body: StartExamBody = await req.json();
   const admin = getSupabaseAdmin();
 
-  // 1. Verificar licencia activa y vigente
   const { data: license, error: licenseErr } = await admin
     .from("licenses")
     .select("id, expires_at, status, plans(code, includes_practicum_full)")
@@ -54,7 +54,6 @@ Deno.serve(async (req) => {
 
   const includesPracticumFull = (license as any).plans?.includes_practicum_full ?? false;
 
-  // 2. Si es full_sim, verificar que el banco tenga cobertura completa (26/26 tareas)
   if (body.mode === "full_sim") {
     const { data: gaps, error: gapsErr } = await admin.rpc("validate_bank_readiness");
     if (gapsErr) return errorResponse(gapsErr.message, 500);
@@ -66,7 +65,6 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 3. Construir el pool de selección según modo
   let query = admin
     .from("questions")
     .select("id, item_type, format, cluster_id, task_id, approach, eco_tasks(domain_id, eco_domains(code))")
@@ -86,13 +84,20 @@ Deno.serve(async (req) => {
   if (poolErr) return errorResponse(poolErr.message, 500);
   if (!pool || pool.length === 0) return errorResponse("No hay preguntas disponibles para estos filtros", 404);
 
-  // 4. Seleccionar ítems según el modo
   const selected = body.mode === "full_sim"
     ? selectFullSim(pool)
     : selectDrill(pool, body.question_count ?? 50);
 
-  // 5. Crear el examen y sus items (clusters agrupados y consecutivos)
-  const timeLimitSeconds = body.mode === "full_sim" ? 240 * 60 : null;
+  // Averiguar qué ítems ya respondió el usuario en exámenes anteriores (para new_items_count
+  // en finish_exam más adelante; aquí solo lo calculamos para dejarlo en config informativo).
+  const { data: previousAnswers } = await admin
+    .from("exam_items")
+    .select("question_id, exams!inner(user_id)")
+    .eq("exams.user_id", user.id)
+    .not("answered_at", "is", null);
+  const previouslySeenIds = new Set((previousAnswers ?? []).map((r: any) => r.question_id));
+
+  const timeLimitSeconds = body.mode === "full_sim" ? FULL_SIM_TOTAL_SECONDS : null;
 
   const { data: exam, error: examErr } = await admin
     .from("exams")
@@ -110,34 +115,59 @@ Deno.serve(async (req) => {
 
   if (examErr) return errorResponse(examErr.message, 500);
 
-  const examItems = selected.map((q, idx) => ({
+  // Asignar section_number: en full_sim, 3 secciones reales sin partir clusters;
+  // en el resto de modos, todo va a la sección 1 (no aplica la estructura de 3 bloques).
+  const sectioned = body.mode === "full_sim"
+    ? assignSections(selected, FULL_SIM_SECTIONS, FULL_SIM_TOTAL_SECONDS)
+    : selected.map((q) => ({ ...q, section_number: 1 }));
+
+  const examItems = sectioned.map((q: any, idx: number) => ({
     exam_id: exam.id,
     question_id: q.id,
     cluster_id: q.cluster_id,
     order_index: idx,
-    is_pretest: false, // el marcado real de pretest se gestiona en el pipeline de contenido, no aquí
+    section_number: q.section_number,
+    is_pretest: false,
   }));
 
   const { error: itemsErr } = await admin.from("exam_items").insert(examItems);
   if (itemsErr) return errorResponse(itemsErr.message, 500);
 
-  // 6. Devolver al frontend solo lo necesario para renderizar (sin correct_answer)
+  if (body.mode === "full_sim") {
+    const sectionRows = buildSectionRows(sectioned, FULL_SIM_SECTIONS, FULL_SIM_TOTAL_SECONDS).map((s, idx) => ({
+      exam_id: exam.id,
+      section_number: idx + 1,
+      total_questions: s.count,
+      time_limit_seconds: s.seconds,
+      status: idx === 0 ? "in_progress" : "pending",
+      started_at: idx === 0 ? new Date().toISOString() : null,
+    }));
+    const { error: sectionsErr } = await admin.from("exam_sections").insert(sectionRows);
+    if (sectionsErr) return errorResponse(sectionsErr.message, 500);
+  }
+
   const { data: renderable } = await admin
     .from("questions")
     .select("id, item_type, format, cluster_id, stem, options, practicum_payload, case_clusters(id, title, scenario_text, media)")
     .in("id", selected.map((q) => q.id));
+
+  // No se filtra correct_answer/explanation aquí: ese campo ni siquiera se selecciona.
+  const itemsWithMeta = (renderable ?? []).map((r: any) => ({
+    ...r,
+    section_number: sectioned.find((s: any) => s.id === r.id)?.section_number ?? 1,
+    previously_seen: previouslySeenIds.has(r.id),
+  }));
 
   return jsonResponse({
     exam_id: exam.id,
     mode: exam.mode,
     total_questions: exam.total_questions,
     time_limit_seconds: exam.time_limit_seconds,
-    items: renderable,
+    sections: body.mode === "full_sim" ? buildSectionRows(sectioned, FULL_SIM_SECTIONS, FULL_SIM_TOTAL_SECONDS) : null,
+    items: itemsWithMeta,
   });
 });
 
-// Selección ponderada para examen completo: respeta pesos de dominio y split de enfoque,
-// y trata cada cluster como bloque atómico (todas sus preguntas hijas entran juntas).
 function selectFullSim(pool: any[]) {
   const targetTotal = FULL_SIM_TOTAL;
   const byDomain: Record<string, any[]> = { people: [], process: [], business_environment: [] };
@@ -169,7 +199,7 @@ function selectDrill(pool: any[], count: number) {
   return groupClusters(shuffle(pool)).slice(0, count);
 }
 
-// Asegura que si entra una pregunta hija de un cluster, entran todas sus hermanas, consecutivas.
+// Devuelve la lista ordenada respetando que los ítems de un mismo cluster queden consecutivos.
 function groupClusters(items: any[]) {
   const seenClusters = new Set<string>();
   const ordered: any[] = [];
@@ -193,6 +223,68 @@ function groupClusters(items: any[]) {
   }
 
   return ordered;
+}
+
+// Convierte la lista ordenada en "bloques" (un cluster completo = 1 bloque; un standalone = bloque de 1)
+// para poder repartir en secciones sin partir nunca un cluster.
+function toBlocks(items: any[]): any[][] {
+  const blocks: any[][] = [];
+  let i = 0;
+  while (i < items.length) {
+    const item = items[i];
+    if (item.cluster_id) {
+      const block = [item];
+      let j = i + 1;
+      while (j < items.length && items[j].cluster_id === item.cluster_id) {
+        block.push(items[j]);
+        j++;
+      }
+      blocks.push(block);
+      i = j;
+    } else {
+      blocks.push([item]);
+      i++;
+    }
+  }
+  return blocks;
+}
+
+// Reparte los bloques en N secciones lo más equilibradas posible (por nº de preguntas),
+// sin partir nunca un bloque (cluster) entre dos secciones.
+function distributeBlocks(items: any[], sectionCount: number): any[][] {
+  const blocks = toBlocks(items);
+  const targetPerSection = Math.ceil(items.length / sectionCount);
+  const sections: any[][] = Array.from({ length: sectionCount }, () => []);
+  let sectionIdx = 0;
+
+  for (const block of blocks) {
+    const currentCount = sections[sectionIdx].reduce((sum, b) => sum + b.length, 0);
+    if (currentCount + block.length > targetPerSection && sectionIdx < sectionCount - 1) {
+      sectionIdx++;
+    }
+    sections[sectionIdx].push(...block);
+  }
+
+  return sections;
+}
+
+function assignSections(items: any[], sectionCount: number, totalSeconds: number) {
+  const sections = distributeBlocks(items, sectionCount);
+  const withSection: any[] = [];
+  sections.forEach((sectionItems, idx) => {
+    for (const item of sectionItems) withSection.push({ ...item, section_number: idx + 1 });
+  });
+  return withSection;
+}
+
+function buildSectionRows(sectionedItems: any[], sectionCount: number, totalSeconds: number) {
+  const counts: number[] = Array.from({ length: sectionCount }, () => 0);
+  for (const item of sectionedItems) counts[item.section_number - 1]++;
+  const total = counts.reduce((a, b) => a + b, 0) || 1;
+  return counts.map((count) => ({
+    count,
+    seconds: Math.round((count / total) * totalSeconds),
+  }));
 }
 
 function shuffle<T>(arr: T[]): T[] {

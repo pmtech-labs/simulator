@@ -1,7 +1,13 @@
 // Edge Function: submit_answer
 //
 // Corrige una respuesta, actualiza exam_items, la telemetría agregada del ítem
-// (questions.times_answered/times_correct) y el mastery por tarea ECO del usuario.
+// (questions.times_answered/times_correct), el mastery por tarea ECO del usuario, y el
+// patrón de tipo de error (user_error_type_stats) cuando la respuesta es incorrecta.
+//
+// Feedback inmediato: SOLO en modos formativos (domain_drill, case_only, custom). En full_sim
+// no se revela is_correct/explanation hasta finish_exam, replicando la presión real del examen
+// (ver SIMULADOR PMP - VISIÓN GENERAL.docx: "en los simulacros realistas, las respuestas y
+// explicaciones permanecen ocultas hasta finalizar").
 
 import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
@@ -9,21 +15,27 @@ import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 interface SubmitAnswerBody {
   exam_id: string;
   question_id: string;
-  user_answer: string[]; // ids de opción(es) seleccionada(s), o payload de matching/hotspot
+  user_answer: string[];
   time_spent_seconds?: number;
 }
 
 function isCorrect(userAnswer: unknown, correctAnswer: unknown): boolean {
-  // Comparación por conjunto para mc_single / mc_multi.
-  // Para formatos practicum (matching/hotspot) se asume que ambos payloads son
-  // arrays de pares normalizados; si el formato requiere lógica distinta,
-  // extiende esta función por `format` (pasar el format en el body si hace falta).
   if (Array.isArray(userAnswer) && Array.isArray(correctAnswer)) {
     const a = [...userAnswer].sort();
     const b = [...correctAnswer].sort();
     return a.length === b.length && a.every((v, i) => v === b[i]);
   }
   return JSON.stringify(userAnswer) === JSON.stringify(correctAnswer);
+}
+
+// Determina el error_type representativo cuando la respuesta es incorrecta, buscando en
+// options el primer id elegido por el usuario que no es la respuesta correcta.
+function findErrorType(userAnswer: string[], options: any[]): string | null {
+  for (const chosenId of userAnswer) {
+    const option = options.find((o: any) => o.id === chosenId);
+    if (option?.error_type) return option.error_type;
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -35,10 +47,9 @@ Deno.serve(async (req) => {
   const body: SubmitAnswerBody = await req.json();
   const admin = getSupabaseAdmin();
 
-  // 1. Verificar que el examen pertenece al usuario y está en curso
   const { data: exam, error: examErr } = await admin
     .from("exams")
-    .select("id, user_id, status")
+    .select("id, user_id, status, mode")
     .eq("id", body.exam_id)
     .single();
 
@@ -46,23 +57,23 @@ Deno.serve(async (req) => {
   if (exam.user_id !== user.id) return errorResponse("No autorizado", 403);
   if (exam.status !== "in_progress") return errorResponse("El examen ya no está en curso", 409);
 
-  // 2. Obtener la pregunta con su respuesta correcta y task_id (solo accesible con service_role)
   const { data: question, error: qErr } = await admin
     .from("questions")
-    .select("id, correct_answer, task_id, times_answered, times_correct")
+    .select("id, correct_answer, explanation, options, task_id, times_answered, times_correct")
     .eq("id", body.question_id)
     .single();
 
   if (qErr || !question) return errorResponse("Pregunta no encontrada", 404);
 
   const correct = isCorrect(body.user_answer, question.correct_answer);
+  const errorType = correct ? null : findErrorType(body.user_answer, question.options as any[]);
 
-  // 3. Actualizar exam_items
   const { error: updateErr } = await admin
     .from("exam_items")
     .update({
       user_answer: body.user_answer,
       is_correct: correct,
+      error_type_chosen: errorType,
       time_spent_seconds: body.time_spent_seconds ?? null,
       answered_at: new Date().toISOString(),
     })
@@ -71,7 +82,6 @@ Deno.serve(async (req) => {
 
   if (updateErr) return errorResponse(updateErr.message, 500);
 
-  // 4. Telemetría agregada del ítem (detección de preguntas mal calibradas)
   await admin
     .from("questions")
     .update({
@@ -80,7 +90,6 @@ Deno.serve(async (req) => {
     })
     .eq("id", question.id);
 
-  // 5. Mastery por tarea ECO (función definida en 0005_analytics.sql)
   const { error: masteryErr } = await admin.rpc("upsert_task_mastery", {
     p_user_id: user.id,
     p_task_id: question.task_id,
@@ -88,7 +97,20 @@ Deno.serve(async (req) => {
   });
   if (masteryErr) return errorResponse(masteryErr.message, 500);
 
-  // No se revela correct_answer en la respuesta salvo que el diseño de producto
-  // decida dar feedback inmediato tras cada cluster; aquí se devuelve solo el resultado.
-  return jsonResponse({ is_correct: correct });
+  if (errorType) {
+    await admin.rpc("record_error_type", { p_user_id: user.id, p_error_type: errorType });
+  }
+
+  // Feedback inmediato SOLO en modos formativos; full_sim solo confirma que se guardó.
+  const isFormative = exam.mode !== "full_sim";
+  if (isFormative) {
+    return jsonResponse({
+      is_correct: correct,
+      correct_answer: question.correct_answer,
+      explanation: question.explanation,
+      error_type: errorType,
+    });
+  }
+
+  return jsonResponse({ saved: true });
 });

@@ -38,9 +38,29 @@ function buildSystemPrompt() {
 Exam Content Outline (ECO) 2026 de PMI. Tu única fuente de verdad es la tarea y los enablers del ECO que se
 te proporcionan — NUNCA cites literalmente ni parafrasees de cerca el PMBOK u otro material protegido, y
 nunca menciones marcas registradas de PMI fuera del contexto normal de un examen de práctica no oficial.
-Genera escenarios realistas que evalúen juicio situacional, no memorización. Responde ÚNICAMENTE con JSON
-válido, sin texto adicional ni backticks:
-{"stem":"...","options":[{"id":"A","text":"..."},{"id":"B","text":"..."},{"id":"C","text":"..."},{"id":"D","text":"..."}],"correct_answer":["B"],"explanation":"...","difficulty":3}`;
+Genera escenarios realistas que evalúen juicio situacional, no memorización.
+
+DISEÑO DE DISTRACTORES (obligatorio): cada opción incorrecta debe ser plausible pero fallar por una razón
+concreta y clasificable en uno de estos tipos de error:
+- "sequence": es una acción válida, pero no la que corresponde hacer PRIMERO.
+- "role": la decisión o acción corresponde a otra persona/rol, no al director de proyecto en este contexto.
+- "approach": aplica lógica predictiva en un contexto ágil, o viceversa.
+- "analysis": actúa sin considerar toda la información relevante del escenario (se precipita).
+- "knowledge": refleja un concepto o principio incorrecto.
+- "interpretation": malinterpreta la situación descrita.
+- "reading": ignora un dato o palabra decisiva del enunciado.
+- "time": implica dedicar tiempo/urgencia de forma desproporcionada (o precipitarse sin analizar).
+Asigna un "error_type" (uno de estos 8 valores exactos) a CADA opción incorrecta. La opción correcta no
+lleva error_type.
+
+CALIDAD DE LA EXPLICACIÓN (obligatoria): la explicación debe, en un solo texto fluido:
+1. Indicar cuál es la mejor respuesta y qué dato del enunciado resulta decisivo para elegirla.
+2. Explicar el razonamiento que conduce a la solución (qué principio profesional se evalúa).
+3. Explicar por qué CADA una de las demás opciones es menos adecuada, conectándolo con su error_type
+   (ej. "es una acción válida pero prematura" para sequence, "correspondería al patrocinador" para role).
+
+Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con esta forma exacta:
+{"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":3}`;
 }
 
 function buildUserPrompt(task: any, approach: string, format: string, difficultyMin: number, difficultyMax: number, focusTags: string[]) {
@@ -58,6 +78,8 @@ Dificultad objetivo: entre ${difficultyMin} y ${difficultyMax} (escala 1-5)${foc
 Genera UNA pregunta de examen tipo PMP en español (neutro, España/LATAM), situacional, evaluando esta tarea.`;
 }
 
+const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"];
+
 function validateDraft(draft: any): string[] {
   const issues: string[] = [];
   if (!draft.stem || draft.stem.length < 20) issues.push("Enunciado demasiado corto");
@@ -68,6 +90,13 @@ function validateDraft(draft: any): string[] {
     const ids = new Set(draft.options.map((o: any) => o.id));
     if (!draft.correct_answer.every((id: string) => ids.has(id))) {
       issues.push("correct_answer no coincide con options");
+    }
+    for (const opt of draft.options) {
+      const isCorrectOption = draft.correct_answer?.includes(opt.id);
+      if (!isCorrectOption) {
+        if (!opt.error_type) issues.push(`Opción ${opt.id} (distractor) sin error_type`);
+        else if (!VALID_ERROR_TYPES.includes(opt.error_type)) issues.push(`Opción ${opt.id} con error_type inválido: ${opt.error_type}`);
+      }
     }
   }
   if (!draft.explanation || draft.explanation.length < 20) issues.push("Explicación ausente o corta");

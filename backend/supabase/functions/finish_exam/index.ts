@@ -4,6 +4,9 @@
 //  - score_pct global
 //  - score_by_domain (People/Process/Business Environment)
 //  - score_by_approach (predictive/agile/hybrid)
+//  - new_items_count / repeated_items_count: cuántos ítems eran nuevos para el usuario vs.
+//    ya respondidos en exámenes anteriores. Un score alto con muchos ítems repetidos no debe
+//    interpretarse como preparación real (ver SIMULADOR PMP - VISIÓN GENERAL.docx).
 
 import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
@@ -31,7 +34,6 @@ Deno.serve(async (req) => {
   if (exam.user_id !== user.id) return errorResponse("No autorizado", 403);
   if (exam.status === "completed") return errorResponse("El examen ya estaba cerrado", 409);
 
-  // Traer todos los items respondidos con su dominio/tarea/approach
   const { data: items, error: itemsErr } = await admin
     .from("exam_items")
     .select("is_correct, question_id, questions(approach, eco_tasks(eco_domains(code)))")
@@ -68,6 +70,20 @@ Deno.serve(async (req) => {
   const scoreByDomain = toPctMap(byDomain);
   const scoreByApproach = toPctMap(byApproach);
 
+  // Ítems repetidos: el usuario ya había respondido esa question_id en OTRO examen antes.
+  const questionIds = items.map((i: any) => i.question_id);
+  const { data: priorAnswers } = await admin
+    .from("exam_items")
+    .select("question_id, exams!inner(user_id, id)")
+    .in("question_id", questionIds)
+    .eq("exams.user_id", user.id)
+    .neq("exams.id", exam.id)
+    .not("answered_at", "is", null);
+
+  const repeatedIds = new Set((priorAnswers ?? []).map((r: any) => r.question_id));
+  const repeatedItemsCount = questionIds.filter((id: string) => repeatedIds.has(id)).length;
+  const newItemsCount = total - repeatedItemsCount;
+
   const { error: updateErr } = await admin
     .from("exams")
     .update({
@@ -76,6 +92,8 @@ Deno.serve(async (req) => {
       score_pct: scorePct,
       score_by_domain: scoreByDomain,
       score_by_approach: scoreByApproach,
+      new_items_count: newItemsCount,
+      repeated_items_count: repeatedItemsCount,
     })
     .eq("id", exam.id);
 
@@ -86,5 +104,10 @@ Deno.serve(async (req) => {
     score_pct: scorePct,
     score_by_domain: scoreByDomain,
     score_by_approach: scoreByApproach,
+    new_items_count: newItemsCount,
+    repeated_items_count: repeatedItemsCount,
+    interpretation_note: repeatedItemsCount > total * 0.3
+      ? "Más del 30% de las preguntas ya las habías respondido antes: este resultado puede sobreestimar tu preparación real."
+      : null,
   });
 });

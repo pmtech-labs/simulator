@@ -31,11 +31,18 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
 const QuestionDraftSchema = z.object({
   stem: z.string().min(20),
-  options: z.array(z.object({ id: z.string(), text: z.string() })).min(2),
+  options: z.array(z.object({
+    id: z.string(),
+    text: z.string(),
+    error_type: z.enum(["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"]).optional(),
+  })).min(2),
   correct_answer: z.array(z.string()).min(1),
   explanation: z.string().min(30),
   difficulty: z.number().int().min(1).max(5),
-});
+}).refine((draft) => {
+  // Cada distractor (opción no correcta) debe llevar error_type asignado.
+  return draft.options.every((o) => draft.correct_answer.includes(o.id) || !!o.error_type);
+}, { message: "Cada distractor debe llevar error_type asignado" });
 
 type QuestionDraft = z.infer<typeof QuestionDraftSchema>;
 
@@ -56,11 +63,22 @@ Exam Content Outline (ECO) 2026 de PMI. Tu única fuente de verdad para generar 
 enablers del ECO que se te proporcionan — NUNCA cites literalmente ni parafrasees de cerca el PMBOK u otro
 material protegido, y nunca menciones marcas registradas de PMI fuera del contexto normal de un examen de
 práctica no oficial. Genera escenarios realistas de gestión de proyectos que evalúen juicio situacional,
-no memorización de definiciones. Responde ÚNICAMENTE con un JSON válido, sin texto adicional ni backticks,
-con esta forma exacta:
+no memorización de definiciones.
+
+DISEÑO DE DISTRACTORES (obligatorio): cada opción incorrecta debe ser plausible pero fallar por una razón
+concreta, clasificada en uno de estos 8 tipos: "sequence" (acción válida pero no la primera que corresponde),
+"role" (la decisión es de otra persona/rol), "approach" (lógica predictiva en contexto ágil o viceversa),
+"analysis" (actúa sin considerar toda la información), "knowledge" (concepto incorrecto), "interpretation"
+(malinterpreta la situación), "reading" (ignora un dato decisivo del enunciado), "time" (urgencia/tiempo
+mal gestionado). Asigna "error_type" a CADA opción incorrecta; la correcta no lo lleva.
+
+CALIDAD DE LA EXPLICACIÓN (obligatoria): debe indicar la mejor respuesta y el dato decisivo del enunciado,
+el razonamiento/principio evaluado, y por qué cada otra opción falla conectándolo con su error_type.
+
+Responde ÚNICAMENTE con un JSON válido, sin texto adicional ni backticks, con esta forma exacta:
 {
   "stem": "...",
-  "options": [{"id":"A","text":"..."}, {"id":"B","text":"..."}, {"id":"C","text":"..."}, {"id":"D","text":"..."}],
+  "options": [{"id":"A","text":"...","error_type":"sequence"}, {"id":"B","text":"..."}, {"id":"C","text":"...","error_type":"role"}, {"id":"D","text":"...","error_type":"analysis"}],
   "correct_answer": ["B"],
   "explanation": "...",
   "difficulty": 3
