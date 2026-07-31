@@ -1,6 +1,9 @@
 // Edge Function: admin_connectors
 //
 // GET    -> lista conectores (sin exponer la API key)
+// PATCH  -> edita un conector existente: nombre, modelo, URL base, marcarlo como
+//           predeterminado (exclusivo), o rotar su API key (crea un secreto nuevo
+//           en Vault; el anterior queda huérfano pero inaccesible, nunca se sobrescribe)
 // POST   -> crea un conector nuevo: guarda la API key en Supabase Vault y solo
 //           persiste en llm_connectors la referencia (secret_id), nunca la key en claro.
 // DELETE -> desactiva un conector (is_active = false; no se borra para preservar
@@ -46,15 +49,42 @@ Deno.serve(async (req) => {
   }
 
   if (req.method === "PATCH") {
-    // Marca un conector como predeterminado (exclusivo: el trigger de BD desmarca los demás).
-    const body: { id: string; is_default?: boolean } = await req.json();
+    const body: {
+      id: string;
+      is_default?: boolean;
+      name?: string;
+      model_id?: string;
+      api_base_url?: string | null;
+      api_key?: string; // si se envía, rota la clave (nuevo secreto en Vault)
+    } = await req.json();
     if (!body.id) return errorResponse("Falta el campo id", 400);
+
+    const updatePayload: Record<string, unknown> = {};
+    if (body.is_default !== undefined) updatePayload.is_default = body.is_default;
+    if (body.name !== undefined) updatePayload.name = body.name;
+    if (body.model_id !== undefined) updatePayload.model_id = body.model_id;
+    if (body.api_base_url !== undefined) updatePayload.api_base_url = body.api_base_url;
+
+    // Rotar la clave: se guarda un secreto nuevo en Vault, nunca se sobrescribe el existente
+    // in situ (los secretos de Vault son inmutables por diseño en este esquema).
+    if (body.api_key) {
+      const { data: secretData, error: secretErr } = await admin.rpc("vault_create_secret_for_connector", {
+        p_secret_value: body.api_key,
+        p_name: `llm_connector_rotated_${body.id}_${Date.now()}`,
+      });
+      if (secretErr) return errorResponse(`Error guardando la nueva key en Vault: ${secretErr.message}`, 500);
+      updatePayload.secret_id = secretData;
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+      return errorResponse("No se ha indicado ningún campo para actualizar", 400);
+    }
 
     const { data: connector, error } = await admin
       .from("llm_connectors")
-      .update({ is_default: body.is_default ?? true })
+      .update(updatePayload)
       .eq("id", body.id)
-      .select("id, name, is_default")
+      .select("id, name, provider, model_id, api_base_url, is_active, is_default")
       .single();
 
     if (error) return errorResponse(error.message, 500);

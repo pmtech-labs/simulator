@@ -43,3 +43,32 @@ La API key viaja en esta llamada de comprobación tal como el admin la ha escrit
 en esta fase** — la función solo la usa para la consulta y no la persiste en ningún sitio. Solo se guarda
 cifrada en Vault cuando el admin confirma la creación del conector con `POST admin_connectors`, como ya
 funciona hoy.
+
+## Edición de conectores existentes (nuevo)
+
+Cada fila de la tabla de conectores debe tener también una acción **"Editar"**, además de "Marcar como
+predeterminado" y "Desactivar". Al abrir la edición:
+
+- Formulario prellenado con `name`, `provider`, `model_id` y `api_base_url` del conector.
+- El campo API key **no se prellena ni se puede leer** (Vault es de solo escritura) — se muestra vacío
+  con el texto de ayuda "Déjalo en blanco para mantener la clave actual, o escribe una nueva para
+  rotarla".
+- Para refrescar el desplegable de modelos sin obligar a rotar la clave, llama a `admin_list_models` con
+  `{ connector_id }` en vez de `{ provider, api_key }` — el backend ya soporta este modo y usa la clave
+  guardada sin que viaje nunca al navegador:
+
+  ```ts
+  const { data } = await supabase.functions.invoke("admin_list_models", {
+    method: "POST",
+    body: { connector_id: connector.id },
+  });
+  ```
+
+- Si el admin escribe una clave nueva en el formulario de edición, usa esa clave (modo `{ provider,
+  api_key }`) para refrescar el desplegable en su lugar — igual que en creación.
+- Al guardar, llama a `PATCH admin_connectors` con `{ id, name?, model_id?, api_base_url?, api_key? }`
+  (solo incluye los campos que hayan cambiado; omite `api_key` si el admin no escribió una nueva, para
+  no rotarla sin querer).
+- Tras rotar la clave de un conector, informa claramente que la clave anterior deja de estar disponible
+  y que los jobs de generación ya completados no se ven afectados (siguen trazados al mismo `connector_id`,
+  solo cambia qué clave se usa a partir de ahora).
