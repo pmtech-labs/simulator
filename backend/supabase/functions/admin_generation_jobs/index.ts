@@ -115,13 +115,35 @@ Deno.serve(async (req) => {
   const admin = getSupabaseAdmin();
 
   if (req.method === "GET") {
-    const { data, error } = await admin
+    const url = new URL(req.url);
+    const limit = Number(url.searchParams.get("limit") ?? url.searchParams.get("page_size") ?? 20);
+    const offset = Number(
+      url.searchParams.get("offset") ??
+        (Number(url.searchParams.get("page") ?? 1) - 1) * limit,
+    );
+
+    const { data, error, count } = await admin
       .from("generation_jobs")
-      .select("*")
+      .select("*, llm_connectors(name)", { count: "exact" })
       .order("created_at", { ascending: false })
-      .limit(50);
+      .range(offset, offset + limit - 1);
+
     if (error) return errorResponse(error.message, 500);
-    return jsonResponse({ jobs: data });
+
+    const jobs = data ?? [];
+    const allTaskIds = [...new Set(jobs.flatMap((j: any) => j.task_ids ?? []))];
+    const { data: tasks } = allTaskIds.length
+      ? await admin.from("eco_tasks").select("id, title").in("id", allTaskIds)
+      : { data: [] as any[] };
+    const taskTitleById = new Map((tasks ?? []).map((t: any) => [t.id, t.title]));
+
+    const enriched = jobs.map((j: any) => ({
+      ...j,
+      connector_name: j.llm_connectors?.name ?? null,
+      task_titles: (j.task_ids ?? []).map((id: string) => taskTitleById.get(id) ?? id),
+    }));
+
+    return jsonResponse({ data: enriched, total: count ?? enriched.length });
   }
 
   if (req.method !== "POST") return errorResponse("Método no soportado", 405);
@@ -211,6 +233,7 @@ Deno.serve(async (req) => {
         difficulty: draft.difficulty ?? 3,
         focus_tags: body.focus_tags ?? [],
         status: "draft", // nunca se publica automáticamente
+        generation_job_id: job.id,
       });
       generated++;
     } catch (err) {

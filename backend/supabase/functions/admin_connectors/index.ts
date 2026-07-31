@@ -28,12 +28,21 @@ Deno.serve(async (req) => {
   const admin = getSupabaseAdmin();
 
   if (req.method === "GET") {
-    const { data, error } = await admin
+    const url = new URL(req.url);
+    const limit = Number(url.searchParams.get("limit") ?? url.searchParams.get("page_size") ?? 20);
+    const offset = Number(
+      url.searchParams.get("offset") ??
+        (Number(url.searchParams.get("page") ?? 1) - 1) * limit,
+    );
+
+    const { data, error, count } = await admin
       .from("llm_connectors")
-      .select("id, name, provider, model_id, api_base_url, is_active, created_at")
-      .order("created_at", { ascending: false });
+      .select("id, name, provider, model_id, api_base_url, is_active, created_at", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
     if (error) return errorResponse(error.message, 500);
-    return jsonResponse({ connectors: data });
+    return jsonResponse({ data, total: count ?? data?.length ?? 0 });
   }
 
   if (req.method === "POST") {
