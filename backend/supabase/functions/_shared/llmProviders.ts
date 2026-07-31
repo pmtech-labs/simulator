@@ -72,3 +72,61 @@ async function callOpenAiCompatible(connector: LlmConnector, system: string, use
   if (!text) throw new Error("Respuesta sin contenido");
   return { text };
 }
+
+// =========================================================
+// Listado de modelos disponibles por proveedor (para el desplegable del
+// formulario de conectores — evita que el admin escriba a mano un model_id
+// inventado o descontinuado, como "GPT-5").
+// =========================================================
+
+export interface ModelInfo {
+  id: string;
+  label?: string;
+}
+
+export async function listModels(
+  provider: string,
+  apiKey: string,
+  apiBaseUrl?: string | null,
+): Promise<ModelInfo[]> {
+  switch (provider) {
+    case "anthropic":
+      return listAnthropicModels(apiKey);
+    case "openai":
+    case "openai_compatible":
+      return listOpenAiCompatibleModels(apiKey, apiBaseUrl);
+    case "google":
+      return listGoogleModels(apiKey);
+    default:
+      throw new Error(`Proveedor no soportado: ${provider}`);
+  }
+}
+
+async function listAnthropicModels(apiKey: string): Promise<ModelInfo[]> {
+  const res = await fetch("https://api.anthropic.com/v1/models", {
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+  });
+  if (!res.ok) throw new Error(`Anthropic API error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return (data.data ?? []).map((m: any) => ({ id: m.id, label: m.display_name ?? m.id }));
+}
+
+async function listOpenAiCompatibleModels(apiKey: string, apiBaseUrl?: string | null): Promise<ModelInfo[]> {
+  const baseUrl = apiBaseUrl ?? "https://api.openai.com/v1";
+  const res = await fetch(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return (data.data ?? []).map((m: any) => ({ id: m.id, label: m.id }));
+}
+
+async function listGoogleModels(apiKey: string): Promise<ModelInfo[]> {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+  if (!res.ok) throw new Error(`Google API error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return (data.models ?? [])
+    .filter((m: any) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
+    .map((m: any) => ({ id: (m.name ?? "").replace(/^models\//, ""), label: m.displayName ?? m.name }));
+}
+
