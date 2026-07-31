@@ -46,8 +46,11 @@ create policy "escritura solo service_role licenses" on licenses
   for all using (auth.role() = 'service_role');
 
 -- Seed de los 2 planes iniciales (idempotente)
+-- Precios ajustados 31/07/2026 tras análisis competitivo vs. pablolledo.com/simuladores
+-- (su tier de 6 meses cuesta $44.90 ≈ 41€; nuestra básica anterior de 49€/3m quedaba por
+-- encima de su plan más caro). Ver docs/01-especificacion-tecnica-producto.md sección 4.
 insert into plans (code, name, duration_months, price_cents, includes_analytics, includes_practicum_full, includes_adaptive_engine)
 values
-  ('basica_3m', 'Básica', 3, 4900, false, false, false),
-  ('premium_6m', 'Premium', 6, 8900, true, true, true)
+  ('basica_3m', 'Básica', 3, 3490, false, false, false),
+  ('premium_6m', 'Premium', 6, 5490, true, true, true)
 on conflict (code) do nothing;

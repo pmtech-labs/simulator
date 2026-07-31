@@ -313,10 +313,17 @@ create policy "usuarios ven solo su mastery"
 
 | Plan | Duración | Incluye | Precio sugerido (EUR) |
 |---|---|---|---|
-| **Básica** | 3 meses | Banco completo de preguntas standalone + clusters de caso, exámenes completos ilimitados, resultado por dominio | 49 € |
-| **Premium** | 6 meses | Todo lo anterior + banco practicum completo (hotspot/graphic/matching avanzado) + analítica de brecha por task/enabler + motor adaptativo (prioriza tasks con menor `mastery_pct`) + reportes descargables | 89 € |
+| **Básica** | 3 meses | Banco completo de preguntas standalone + clusters de caso, exámenes completos ilimitados, resultado por dominio | 34,90 € |
+| **Premium** | 6 meses | Todo lo anterior + banco practicum completo (hotspot/graphic/matching avanzado) + analítica de brecha por task/enabler + motor adaptativo (prioriza tasks con menor `mastery_pct`) + reportes descargables | 54,90 € |
 
-Referencia de mercado: PrepCast cobra 90 días de acceso a ~720-2.200 preguntas en el rango de $129-179; RMC/Rita Mulcahy con acceso anual ronda $150-250. Tu punto de entrada (49-89 €) es competitivo para LATAM/España sin ser el más barato del mercado — la diferenciación es calibración ECO 2026 + analítica, no precio.
+> **Ajustado el 31/07/2026** tras comparar contra `pablolledo.com/simuladores` (competidor real, 96 reseñas
+> mayoritariamente de 5 estrellas): su tier de 6 meses cuesta $44,90 (~41 €) con 1.730 preguntas y ya
+> reclama estar "actualizado a PMBOK8 / Examen 2026". El pricing anterior (49 €/89 €) quedaba por encima
+> de su plan más caro — insostenible sin una ventaja de producto muy visible desde el primer contacto.
+> La diferenciación ya no puede apoyarse en "somos los únicos actualizados" (afirmación que ellos también
+> hacen) — tiene que verse en la analítica granular (tipo de error, mastery por tarea) desde la demo.
+
+Referencia de mercado: PrepCast cobra 90 días de acceso a ~720-2.200 preguntas en el rango de $129-179; RMC/Rita Mulcahy con acceso anual ronda $150-250; Pablo Lledó cobra $44,90 por 6 meses con 1.730 preguntas. El punto de entrada ajustado (34,90-54,90 €) queda en línea con el competidor más relevante en español, no por debajo de forma agresiva — la diferenciación es la analítica de errores y el motor adaptativo, no el precio.
 
 **Recomendación de ajuste**: no diferencies solo por duración. La palanca de valor real es la analítica adaptativa — muévela a Premium como está, pero considera un tercer escalón futuro (`Premium+` o add-on) con sesiones de mentoría/corrección humana, aprovechando que ya tienes infraestructura de formación híbrida.
 
@@ -324,7 +331,7 @@ Referencia de mercado: PrepCast cobra 90 días de acceso a ~720-2.200 preguntas 
 
 | Variable | Supuesto inicial |
 |---|---|
-| Precio medio ponderado (mix 60% básica / 40% premium) | 49×0.6 + 89×0.4 = **65,0 €** |
+| Precio medio ponderado (mix 60% básica / 40% premium) | 34,90×0.6 + 54,90×0.4 = **42,90 €** |
 | Tasa de upsell básica→premium (dentro de los 3 meses) | 15% |
 | Tasa de recompra (repite tras expirar, ej. suspendió el examen) | 20% |
 | Coste variable por licencia (hosting, Stripe ~2.9%+0.30€, soporte) | ~6 € |
@@ -333,18 +340,28 @@ Referencia de mercado: PrepCast cobra 90 días de acceso a ~720-2.200 preguntas 
 **LTV simplificado por cohorte de 100 usuarios (básica inicial):**
 
 ```
-100 usuarios × 49 €                         = 4.900 €
-+ 15 upsell a premium (89-49=40€ adicional) =   600 €
-+ 20 recompras (a 49€ media)                =   980 €
+100 usuarios × 34,90 €                          = 3.490 €
++ 15 upsell a premium (54,90-34,90=20€ adicional) =   300 €
++ 20 recompras (a 34,90€ media)                  =   698 €
 ────────────────────────────────────────────────────
-Ingreso total cohorte                       = 6.480 €
-LTV medio por usuario inicial               = 64,8 €
-Coste variable (100+15+20 licencias × 6€)   =   810 €
-Margen bruto cohorte                        = 5.670 €
-LTV neto medio                              ≈ 56,7 € / usuario
+Ingreso total cohorte                           = 4.488 €
+LTV medio por usuario inicial                   = 44,88 €
+Coste variable (100+15+20 licencias × 6€)       =   810 €
+Margen bruto cohorte                            = 3.678 €
+LTV neto medio                                  ≈ 36,78 € / usuario
 ```
 
-Con un CAC de 25-40 €, el ratio LTV:CAC queda en **1,4x–2,3x** — funcional pero no holgado para este pricing. Dos palancas para mejorarlo sin tocar producto:
+> **Alerta directa**: bajar el precio para ser competitivos frente a Pablo Lledó deteriora el ratio
+> LTV:CAC de forma real, no cosmética. Con un CAC de 25 € el ratio queda en 1,47x (ajustado, no holgado);
+> con CAC de 40 € cae a **0,92x — por debajo de 1x, es decir, se pierde dinero por cada usuario adquirido
+> a ese coste**. Esto no invalida el reposicionamiento de precio (seguir 15-20€ por encima del mercado sin
+> diferenciación visible tampoco convierte), pero sí obliga a que el CAC real se mantenga en la parte baja
+> del rango (canal orgánico/SEO/newsletter propio, no paid social genérico) o a subir la tasa de upsell a
+> premium más allá del 15% asumido — la palanca de mayor impacto disponible sigue siendo la analítica
+> adaptativa de Premium, que aquí es también el margen más defendible frente a un competidor con banco
+> estático de exámenes pre-armados.
+
+Dos palancas adicionales para mejorar el ratio sin tocar producto:
 1. **Bundle cruzado** con tu programa híbrido de 35 horas (ya lo mencionas en el cierre comercial de la newsletter) — sube el ticket medio real de conversión sin aumentar CAC.
 3. **Ventana de recompra dirigida**: si el simulador detecta `mastery_pct` bajo en Business Environment (el dominio que triplicó peso, donde más gente fallará por estudiar con material viejo), dispara oferta de recompra automatizada al expirar — ya tienes la señal en `user_task_mastery`.
 
