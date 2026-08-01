@@ -20,6 +20,8 @@ export async function callLlm(connector: LlmConnector, system: string, userPromp
     case "openai":
     case "openai_compatible":
       return callOpenAiCompatible(connector, system, userPrompt);
+    case "google":
+      return callGoogle(connector, system, userPrompt);
     default:
       throw new Error(`Proveedor no soportado: ${connector.provider}`);
   }
@@ -70,6 +72,30 @@ async function callOpenAiCompatible(connector: LlmConnector, system: string, use
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content;
   if (!text) throw new Error("Respuesta sin contenido");
+  return { text };
+}
+
+async function callGoogle(connector: LlmConnector, system: string, userPrompt: string): Promise<GenerationResult> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${connector.model_id}:generateContent?key=${connector.apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: userPrompt }] }],
+        systemInstruction: { parts: [{ text: system }] },
+        // thinkingBudget: 0 desactiva el razonamiento extendido — esta tarea es redacción
+        // directa, no necesita "pensar" y el thinking consumía parte de maxOutputTokens,
+        // dejando la respuesta JSON truncada a mitad.
+        generationConfig: { maxOutputTokens: 3000 },
+      }),
+    },
+  );
+
+  if (!res.ok) throw new Error(`Google API error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Respuesta de Google sin texto (posible bloqueo de safety filters)");
   return { text };
 }
 

@@ -224,7 +224,23 @@ Deno.serve(async (req) => {
       );
 
       const cleaned = result.text.replace(/```json|```/g, "").trim();
-      const draft = JSON.parse(cleaned);
+      let draft: any;
+      try {
+        draft = JSON.parse(cleaned);
+      } catch (parseErr) {
+        failed++;
+        // Se incluye un fragmento del texto crudo devuelto por el modelo para poder
+        // diagnosticar la causa real (comillas sin escapar, formato inesperado, etc.)
+        // en vez de solo ver "JSON inválido" sin contexto.
+        errors.push(
+          `Ítem ${i + 1}: JSON inválido (${(parseErr as Error).message}) — fragmento crudo: ${cleaned.slice(0, 300)}`,
+        );
+        if (generated === 0 && failed >= 2) {
+          errors.push(`Lote detenido tras ${failed} fallos consecutivos: revisa el modelo/clave del conector antes de reintentar.`);
+          break;
+        }
+        continue;
+      }
       const issues = validateDraft(draft);
 
       if (issues.length > 0) {
