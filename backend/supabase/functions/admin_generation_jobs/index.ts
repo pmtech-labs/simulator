@@ -140,6 +140,37 @@ function repairUnescapedQuotes(text: string): string {
   return result;
 }
 
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Corrige un sesgo real detectado: el modelo tiende a copiar literalmente el "B" del
+// ejemplo de formato del prompt como posición de la respuesta correcta (confirmado:
+// 58/59 preguntas de un lote real tenían la correcta en B). En vez de fiarse de que el
+// modelo varíe la posición por instrucción, se reordenan las opciones por código tras
+// generar, así la posición de la respuesta correcta queda aleatoria de verdad sin
+// depender del comportamiento del LLM.
+function randomizeOptionOrder(draft: any): any {
+  if (!Array.isArray(draft.options) || draft.options.length === 0) return draft;
+  const letters = draft.options.map((o: any) => o.id);
+  const shuffled = shuffleArray(draft.options);
+  const idMap: Record<string, string> = {};
+  const newOptions = shuffled.map((opt: any, idx: number) => {
+    const newId = letters[idx];
+    idMap[opt.id] = newId;
+    return { ...opt, id: newId };
+  });
+  const newCorrectAnswer = Array.isArray(draft.correct_answer)
+    ? draft.correct_answer.map((oldId: string) => idMap[oldId] ?? oldId)
+    : draft.correct_answer;
+  return { ...draft, options: newOptions, correct_answer: newCorrectAnswer };
+}
+
 function validateDraft(draft: any): string[] {
   const issues: string[] = [];
   if (!draft.stem || draft.stem.length < 20) issues.push("Enunciado demasiado corto");
@@ -295,6 +326,7 @@ Deno.serve(async (req) => {
         }
       }
 
+      draft = randomizeOptionOrder(draft);
       const issues = validateDraft(draft);
 
       if (issues.length > 0) {
