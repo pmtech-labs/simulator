@@ -79,7 +79,7 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con est
 {"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":3}`;
 }
 
-function buildUserPrompt(task: any, approach: string, format: string, difficultyMin: number, difficultyMax: number, focusTags: string[]) {
+function buildUserPrompt(task: any, approach: string, format: string, difficultyMin: number, difficultyMax: number, focusTags: string[], targetLetter: string) {
   const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
   const focusLine = focusTags.length > 0 ? `\nTemas transversales a entretejer si es natural: ${focusTags.join(", ")}` : "";
   return `Dominio ECO: ${task.eco_domains.name}
@@ -91,7 +91,13 @@ Enfoque de gestión de proyectos: ${approach}
 Formato: ${format}
 Dificultad objetivo: entre ${difficultyMin} y ${difficultyMax} (escala 1-5)${focusLine}
 
-Genera UNA pregunta de examen tipo PMP en español (neutro, España/LATAM), situacional, evaluando esta tarea.`;
+Genera UNA pregunta de examen tipo PMP en español (neutro, España/LATAM), situacional, evaluando esta tarea.
+
+POSICIÓN DE LA RESPUESTA CORRECTA (obligatorio, no lo cambies): la opción correcta debe quedar en la
+posición "${targetLetter}". Es decir, "correct_answer" debe ser exactamente ["${targetLetter}"], y el
+resto de posiciones (A, B, C, D excluyendo "${targetLetter}") deben ser los distractores. Construye tu
+razonamiento y el orden de las opciones directamente para que esto sea cierto desde el principio —
+no generes la pregunta con la correcta en otra posición y la corrijas después.`;
 }
 
 const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"];
@@ -140,38 +146,7 @@ function repairUnescapedQuotes(text: string): string {
   return result;
 }
 
-function shuffleArray<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-// Corrige un sesgo real detectado: el modelo tiende a copiar literalmente el "B" del
-// ejemplo de formato del prompt como posición de la respuesta correcta (confirmado:
-// 58/59 preguntas de un lote real tenían la correcta en B). En vez de fiarse de que el
-// modelo varíe la posición por instrucción, se reordenan las opciones por código tras
-// generar, así la posición de la respuesta correcta queda aleatoria de verdad sin
-// depender del comportamiento del LLM.
-function randomizeOptionOrder(draft: any): any {
-  if (!Array.isArray(draft.options) || draft.options.length === 0) return draft;
-  const letters = draft.options.map((o: any) => o.id);
-  const shuffled = shuffleArray(draft.options);
-  const idMap: Record<string, string> = {};
-  const newOptions = shuffled.map((opt: any, idx: number) => {
-    const newId = letters[idx];
-    idMap[opt.id] = newId;
-    return { ...opt, id: newId };
-  });
-  const newCorrectAnswer = Array.isArray(draft.correct_answer)
-    ? draft.correct_answer.map((oldId: string) => idMap[oldId] ?? oldId)
-    : draft.correct_answer;
-  return { ...draft, options: newOptions, correct_answer: newCorrectAnswer };
-}
-
-function validateDraft(draft: any): string[] {
+function validateDraft(draft: any, targetLetter: string): string[] {
   const issues: string[] = [];
   if (!draft.stem || draft.stem.length < 20) issues.push("Enunciado demasiado corto");
   if (!Array.isArray(draft.options) || draft.options.length < 2) issues.push("Menos de 2 opciones");
@@ -182,7 +157,18 @@ function validateDraft(draft: any): string[] {
     if (!draft.correct_answer.every((id: string) => ids.has(id))) {
       issues.push("correct_answer no coincide con options");
     }
+    // La posición de la correcta se fija ANTES de generar (ver buildUserPrompt) para que
+    // el propio modelo escriba explanation/options ya coherentes con esa letra desde el
+    // origen. Aquí solo se verifica que el modelo cumplió lo pedido; si no, se descarta
+    // el ítem en vez de reordenar después (reordenar rompía las referencias a letras
+    // dentro del texto libre de "explanation", que el modelo sí escribe en prosa).
+    if (!draft.correct_answer.includes(targetLetter)) {
+      issues.push(`La respuesta correcta no quedó en la posición solicitada (${targetLetter})`);
+    }
     for (const opt of draft.options) {
+      if (!opt.text || String(opt.text).trim().length < 3) {
+        issues.push(`Opción ${opt.id} sin texto (posible corrupción de JSON)`);
+      }
       const isCorrectOption = draft.correct_answer?.includes(opt.id);
       if (!isCorrectOption) {
         if (!opt.error_type) issues.push(`Opción ${opt.id} (distractor) sin error_type`);
@@ -287,6 +273,10 @@ Deno.serve(async (req) => {
   for (let i = 0; i < body.count_requested; i++) {
     const taskId = body.task_ids[i % body.task_ids.length];
     const approach = approaches[i % approaches.length];
+    // Rota A/B/C/D determinísticamente por ítem para garantizar una distribución real
+    // de la posición de la respuesta correcta a lo largo del lote (ver bug histórico:
+    // el modelo copiaba literalmente el "B" del ejemplo del prompt casi siempre).
+    const targetLetter = ["A", "B", "C", "D"][i % 4];
 
     const { data: task } = await admin
       .from("eco_tasks")
@@ -300,7 +290,7 @@ Deno.serve(async (req) => {
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(task, approach, body.format ?? "mc_single", body.difficulty_min ?? 1, body.difficulty_max ?? 5, body.focus_tags ?? []),
+        buildUserPrompt(task, approach, body.format ?? "mc_single", body.difficulty_min ?? 1, body.difficulty_max ?? 5, body.focus_tags ?? [], targetLetter),
       );
 
       const cleaned = result.text.replace(/```json|```/g, "").trim();
@@ -326,8 +316,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      draft = randomizeOptionOrder(draft);
-      const issues = validateDraft(draft);
+      const issues = validateDraft(draft, targetLetter);
 
       if (issues.length > 0) {
         failed++;
