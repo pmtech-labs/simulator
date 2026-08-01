@@ -51,6 +51,11 @@ te proporcionan — NUNCA cites literalmente ni parafrasees de cerca el PMBOK u 
 nunca menciones marcas registradas de PMI fuera del contexto normal de un examen de práctica no oficial.
 Genera escenarios realistas que evalúen juicio situacional, no memorización.
 
+FORMATO DE TEXTO (crítico, causa de errores si se ignora): dentro de "stem", "options[].text" y
+"explanation" NUNCA uses comillas dobles ("). Si necesitas citar literalmente lo que dice un
+interesado o un documento, usa comillas simples (') o comillas angulares (« »). Las comillas dobles
+sin escapar dentro del texto rompen el JSON de salida — evítalas por completo, no las escapes con \\".
+
 DISEÑO DE DISTRACTORES (obligatorio): cada opción incorrecta debe ser plausible pero fallar por una razón
 concreta y clasificable en uno de estos tipos de error:
 - "sequence": es una acción válida, pero no la que corresponde hacer PRIMERO.
@@ -90,6 +95,50 @@ Genera UNA pregunta de examen tipo PMP en español (neutro, España/LATAM), situ
 }
 
 const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"];
+
+// Reparación de emergencia: el modelo a veces cuela comillas dobles literales dentro
+// del texto (stem/explanation) pese a la instrucción del prompt, lo que rompe el JSON
+// ("Expected ':' after property name"). Recorre el texto carácter a carácter y, cuando
+// encuentra una comilla que abre una cadena de texto y la siguiente comilla NO va seguida
+// de un carácter estructural de JSON (: , } ]), la trata como comilla literal de contenido
+// y la escapa, en vez de cerrarla.
+function repairUnescapedQuotes(text: string): string {
+  let result = "";
+  let inString = false;
+  let escapeNext = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escapeNext) {
+      result += ch;
+      escapeNext = false;
+      continue;
+    }
+    if (ch === "\\") {
+      result += ch;
+      escapeNext = true;
+      continue;
+    }
+    if (ch === '"') {
+      if (!inString) {
+        inString = true;
+        result += ch;
+      } else {
+        let j = i + 1;
+        while (j < text.length && /\s/.test(text[j])) j++;
+        const next = text[j];
+        if (next === ":" || next === "," || next === "}" || next === "]" || j >= text.length) {
+          inString = false;
+          result += ch;
+        } else {
+          result += '\\"';
+        }
+      }
+      continue;
+    }
+    result += ch;
+  }
+  return result;
+}
 
 function validateDraft(draft: any): string[] {
   const issues: string[] = [];
@@ -227,20 +276,25 @@ Deno.serve(async (req) => {
       let draft: any;
       try {
         draft = JSON.parse(cleaned);
-      } catch (parseErr) {
-        failed++;
-        // Se incluye un fragmento del texto crudo devuelto por el modelo para poder
-        // diagnosticar la causa real (comillas sin escapar, formato inesperado, etc.)
-        // en vez de solo ver "JSON inválido" sin contexto.
-        errors.push(
-          `Ítem ${i + 1}: JSON inválido (${(parseErr as Error).message}) — fragmento crudo: ${cleaned.slice(0, 300)}`,
-        );
-        if (generated === 0 && failed >= 2) {
-          errors.push(`Lote detenido tras ${failed} fallos consecutivos: revisa el modelo/clave del conector antes de reintentar.`);
-          break;
+      } catch {
+        try {
+          draft = JSON.parse(repairUnescapedQuotes(cleaned));
+        } catch (parseErr) {
+          failed++;
+          // Se incluye un fragmento del texto crudo devuelto por el modelo para poder
+          // diagnosticar la causa real (comillas sin escapar, formato inesperado, etc.)
+          // en vez de solo ver "JSON inválido" sin contexto.
+          errors.push(
+            `Ítem ${i + 1}: JSON inválido incluso tras reparación (${(parseErr as Error).message}) — fragmento crudo: ${cleaned.slice(0, 300)}`,
+          );
+          if (generated === 0 && failed >= 2) {
+            errors.push(`Lote detenido tras ${failed} fallos consecutivos: revisa el modelo/clave del conector antes de reintentar.`);
+            break;
+          }
+          continue;
         }
-        continue;
       }
+
       const issues = validateDraft(draft);
 
       if (issues.length > 0) {
