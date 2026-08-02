@@ -69,10 +69,33 @@ if (wantsNewsletter) {
 - No muestres ningún mensaje de error al usuario si `subscribe_newsletter` falla; es una
   acción secundaria, no crítica para el flujo de registro.
 
-## 4. Pendiente de decisión — Substack (no lo implementes todavía)
+## 4. Exportar suscriptores para Substack (opción B confirmada)
 
-Todavía no está decidido cómo se sincroniza la suscripción con Substack (no tiene API
-pública — solo hay dos vías reales: widget embebido oficial con un clic adicional en
-Substack, o exportación CSV periódica con importación manual). No añadas ninguna
-integración con Substack todavía; el backend ya guarda el consentimiento y sincroniza
-con Resend, así que no se pierde nada mientras se decide la vía para Substack.
+Ya está construido el backend: `export_newsletter_subscribers` (solo admin) devuelve un
+CSV de los suscriptores nuevos desde la última exportación, y los marca como exportados
+automáticamente.
+
+Añade en el panel de administración (por ejemplo, junto a las estadísticas o en una
+sección nueva "Boletín") un botón **"Exportar nuevos suscriptores (CSV)"**:
+
+```ts
+const handleExport = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export_newsletter_subscribers`,
+    { headers: { Authorization: `Bearer ${session?.access_token}` } },
+  );
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `nuevos_suscriptores_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+```
+
+Añade un texto de ayuda junto al botón: *"Descarga los nuevos suscriptores desde la
+última exportación e impórtalos en Substack (Settings → Subscribers → Import) antes de
+enviar el boletín semanal."* — es un paso manual pero rápido, pensado para hacerse una
+vez por semana antes de cada envío.
