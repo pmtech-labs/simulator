@@ -56,3 +56,34 @@ duración | fin temprano), nombre de la actividad en el centro, fila inferior (i
 tardío | holgura | fin tardío). Las actividades en la ruta crítica (holgura total = 0)
 se resaltan en azul; el resto en gris — así el candidato puede identificarlas visualmente
 además de por el cálculo, si el enunciado lo permite.
+
+## Generación de más preguntas de este tipo (nuevo, sin IA)
+
+Ya existe una segunda Edge Function, `generate_network_diagram_question`, que genera
+este tipo de preguntas **sin usar ningún LLM** — toda la matemática (topología de red,
+cálculo de ruta crítica, distractores) se calcula por código determinista, precisamente
+porque los modelos de IA no son fiables haciendo aritmética de grafos con varias ramas
+paralelas. Verificado con pruebas reales: la matemática es correcta en el 100% de los
+casos generados.
+
+Añade en `/admin/generate` (o en una sección aparte, como prefiráis) un botón
+**"Generar preguntas de diagrama de red (CPM/PDM)"** independiente del formulario de
+generación por IA existente, ya que esta función tiene una firma distinta (no pide
+conector ni approach, solo tarea ECO y cantidad):
+
+```ts
+const { data, error } = await supabase.functions.invoke("generate_network_diagram_question", {
+  method: "POST",
+  body: { task_id: selectedTaskId, count: 5 },
+});
+// data: { generated: number, requested: number, question_ids: string[] }
+```
+
+- El selector de tarea ECO puede reutilizar el mismo componente que ya usáis en el
+  formulario de generación por IA (agrupado por dominio).
+- Muestra el resultado igual que con los jobs de IA: "5 de 5 generadas" — aquí no debería
+  haber fallos salvo error de conexión, ya que no depende de ningún modelo externo.
+- Las preguntas generadas entran igual en la cola de revisión (`status: 'draft'`), y en
+  la columna "Generado con" (del prompt de trazabilidad anterior) deben aparecer como
+  **"Manual"** — es correcto y esperado, ya que no hay ningún conector LLM involucrado,
+  aunque el proceso esté automatizado por código.
