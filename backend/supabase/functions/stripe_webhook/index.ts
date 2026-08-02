@@ -60,6 +60,17 @@ Deno.serve(async (req) => {
       const expiresAt = new Date(startsAt);
       expiresAt.setMonth(expiresAt.getMonth() + plan.duration_months);
 
+      // Al pasar a un plan de pago, se cierra cualquier licencia gratuita activa. El
+      // plan free tiene expires_at ~83 años en el futuro (para no depender de un
+      // cronómetro de sesión), así que si se dejara activa "ganaría" por fecha frente
+      // a la de pago en la selección de licencia activa (que ordena por expires_at
+      // desc) -- solo debe haber una licencia realmente "vigente" a la vez.
+      await admin
+        .from("licenses")
+        .update({ status: "upgraded" })
+        .eq("user_id", userId)
+        .eq("status", "active");
+
       await admin.from("licenses").insert({
         user_id: userId,
         plan_id: plan.id,

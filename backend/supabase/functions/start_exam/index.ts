@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
 
   const { data: license, error: licenseErr } = await admin
     .from("licenses")
-    .select("id, expires_at, status, plans(code, includes_practicum_full)")
+    .select("id, expires_at, status, free_full_sim_used, plans(code, includes_practicum_full)")
     .eq("user_id", user.id)
     .eq("status", "active")
     .gt("expires_at", new Date().toISOString())
@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
   if (!license) return errorResponse("No tienes una licencia activa vigente", 403);
 
   const includesPracticumFull = (license as any).plans?.includes_practicum_full ?? false;
+  const planCode = (license as any).plans?.code;
 
   if (body.mode === "full_sim") {
     const { data: gaps, error: gapsErr } = await admin.rpc("validate_bank_readiness");
@@ -62,6 +63,15 @@ Deno.serve(async (req) => {
       return errorResponse(
         `El banco no tiene cobertura completa: faltan preguntas publicadas en ${gaps.length} tarea(s) ECO.`,
         409,
+      );
+    }
+
+    // El plan gratuito incluye UN simulacro completo de regalo, no limitado por tiempo
+    // de sesión (a diferencia de competidores con cronómetro de prueba) sino por uso.
+    if (planCode === "free" && (license as any).free_full_sim_used) {
+      return errorResponse(
+        "Ya usaste tu simulacro completo de regalo del plan gratuito. Mejora tu plan para simulacros ilimitados.",
+        403,
       );
     }
   }
@@ -149,6 +159,10 @@ Deno.serve(async (req) => {
     .single();
 
   if (examErr) return errorResponse(examErr.message, 500);
+
+  if (body.mode === "full_sim" && planCode === "free") {
+    await admin.from("licenses").update({ free_full_sim_used: true }).eq("id", license.id);
+  }
 
   // Asignar section_number: en full_sim, 3 secciones reales sin partir clusters;
   // en el resto de modos, todo va a la sección 1 (no aplica la estructura de 3 bloques).
