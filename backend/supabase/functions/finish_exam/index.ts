@@ -21,6 +21,16 @@ const RESULT_DISCLAIMER =
   "el examen real. Complementa esta práctica con estudio estructurado, revisión de tus " +
   "errores, práctica progresiva y tu propia experiencia profesional.";
 
+// PMI no publica una nota de corte oficial para el examen PMP (usa bandas de desempeño
+// por dominio: Above/Target/Below Target, sin porcentaje público). Este umbral es un
+// criterio de referencia propio de PMTech Simulator para emitir el diploma de logro —
+// debe declararse siempre como tal, nunca presentarse como la nota de corte real de PMI.
+const DIPLOMA_THRESHOLD_PCT = 65;
+const DIPLOMA_DISCLAIMER =
+  "Este diploma reconoce tu desempeño en un simulacro completo según un criterio de " +
+  "referencia propio de PMTech Simulator. PMI no publica una nota de corte oficial para " +
+  "el examen PMP real — usa bandas de desempeño por dominio, no un porcentaje público.";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -32,7 +42,7 @@ Deno.serve(async (req) => {
 
   const { data: exam, error: examErr } = await admin
     .from("exams")
-    .select("id, user_id, status")
+    .select("id, user_id, status, mode")
     .eq("id", body.exam_id)
     .single();
 
@@ -105,6 +115,24 @@ Deno.serve(async (req) => {
 
   if (updateErr) return errorResponse(updateErr.message, 500);
 
+  let diploma: { id: string; issued_at: string } | null = null;
+  if (exam.mode === "full_sim" && scorePct >= DIPLOMA_THRESHOLD_PCT) {
+    const { data: diplomaRow, error: diplomaErr } = await admin
+      .from("diplomas")
+      .insert({
+        user_id: user.id,
+        exam_id: exam.id,
+        score_pct: scorePct,
+        score_by_domain: scoreByDomain,
+        threshold_pct: DIPLOMA_THRESHOLD_PCT,
+      })
+      .select("id, issued_at")
+      .single();
+    // No se bloquea la respuesta del examen si falla la emisión del diploma (ej. ya
+    // existía por un reintento) — el resultado del examen es lo prioritario.
+    if (!diplomaErr && diplomaRow) diploma = diplomaRow;
+  }
+
   return jsonResponse({
     exam_id: exam.id,
     score_pct: scorePct,
@@ -115,6 +143,9 @@ Deno.serve(async (req) => {
     disclaimer: RESULT_DISCLAIMER,
     interpretation_note: repeatedItemsCount > total * 0.3
       ? "Más del 30% de las preguntas ya las habías respondido antes: este resultado puede sobreestimar tu preparación real."
+      : null,
+    diploma: diploma
+      ? { id: diploma.id, issued_at: diploma.issued_at, threshold_pct: DIPLOMA_THRESHOLD_PCT, disclaimer: DIPLOMA_DISCLAIMER }
       : null,
   });
 });
