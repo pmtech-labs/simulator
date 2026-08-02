@@ -88,3 +88,40 @@ no tenemos ningún uso real definido para esos datos todavía — pedir datos pe
 una finalidad concreta va contra el principio de minimización de datos del RGPD que ya
 aplicamos en el aviso legal del registro. Si en el futuro se necesitan (por ejemplo,
 para notificaciones por WhatsApp), se añaden entonces con su finalidad declarada.
+
+## 5. Indicador de nivel de preparación (Premium) — nuevo, backend ya listo
+
+Inspirado en la "predicción de aprobado" que ofrece el competidor, pero planteado con
+honestidad: no existe una fórmula oficial que traduzca desempeño en simulacros a una
+probabilidad real de aprobar el examen, así que en vez de un falso "% de probabilidad"
+construimos un indicador cualitativo (Bajo/Moderado/Bueno/Alto) con su disclaimer
+siempre visible.
+
+Ya está desplegada `readiness_prediction` (GET, requiere plan Premium — devuelve 403 en
+Básica/Gratis). Añádelo en `/progreso`, como tarjeta destacada (encaja bien donde el
+competidor gatea sus "Estadísticas Avanzadas" detrás de "Mejorar Plan" — mismo hueco,
+contenido honesto):
+
+```ts
+const { data, error } = await supabase.functions.invoke("readiness_prediction", {
+  method: "GET",
+});
+```
+
+Comportamiento según la respuesta:
+
+- **Si el usuario no es Premium** (error 403): muestra la tarjeta bloqueada con un CTA
+  "Mejorar a Premium" — mismo patrón que ya usáis para otras funciones gateadas.
+- **Si `data_sufficient === false`**: muestra `data.message` tal cual (ya viene
+  redactado, ej. "Practica al menos 20 preguntas para desbloquear tu indicador...").
+- **Si `data_sufficient === true`**: muestra:
+  - `data.band` como texto grande y destacado (Bajo/Moderado/Bueno/Alto), con un color
+    acorde (rojo/ámbar/verde claro/verde) — no un semáforo agresivo, algo sobrio.
+  - `data.readiness_score` como número de apoyo, más pequeño.
+  - Desglose por dominio (`data.score_by_domain`) en una mini-barra por dominio, igual
+    que ya hacéis en el resto de la app.
+  - **`data.disclaimer` visible siempre, no en un tooltip** — mismo criterio que el
+    disclaimer de resultado y el del diploma: la aclaración de que no es una
+    probabilidad real debe verse sin que el usuario tenga que buscarla.
+  - Si `data.based_on_full_sims > 0`, puedes añadir una nota pequeña: *"Basado en tu
+    dominio por tarea y tus últimos N simulacros completos."*
