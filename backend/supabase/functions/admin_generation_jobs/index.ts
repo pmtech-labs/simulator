@@ -76,10 +76,10 @@ CALIDAD DE LA EXPLICACIÓN (obligatoria): la explicación debe, en un solo texto
    (ej. "es una acción válida pero prematura" para sequence, "correspondería al patrocinador" para role).
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con esta forma exacta:
-{"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":3}`;
+{"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":<entero 1-5 según se te indique, NUNCA un valor fijo por defecto>}`;
 }
 
-function buildUserPrompt(task: any, approach: string, format: string, difficultyMin: number, difficultyMax: number, focusTags: string[], targetLetter: string) {
+function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string) {
   const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
   const focusLine = focusTags.length > 0 ? `\nTemas transversales a entretejer si es natural: ${focusTags.join(", ")}` : "";
   return `Dominio ECO: ${task.eco_domains.name}
@@ -88,8 +88,7 @@ Enablers de referencia:
 ${enablers}
 
 Enfoque de gestión de proyectos: ${approach}
-Formato: ${format}
-Dificultad objetivo: entre ${difficultyMin} y ${difficultyMax} (escala 1-5)${focusLine}
+Formato: ${format}${focusLine}
 
 Genera UNA pregunta de examen tipo PMP en español (neutro, España/LATAM), situacional, evaluando esta tarea.
 
@@ -97,7 +96,12 @@ POSICIÓN DE LA RESPUESTA CORRECTA (obligatorio, no lo cambies): la opción corr
 posición "${targetLetter}". Es decir, "correct_answer" debe ser exactamente ["${targetLetter}"], y el
 resto de posiciones (A, B, C, D excluyendo "${targetLetter}") deben ser los distractores. Construye tu
 razonamiento y el orden de las opciones directamente para que esto sea cierto desde el principio —
-no generes la pregunta con la correcta en otra posición y la corrijas después.`;
+no generes la pregunta con la correcta en otra posición y la corrijas después.
+
+DIFICULTAD (obligatorio, no lo cambies): el campo "difficulty" de tu respuesta debe ser exactamente el
+número ${targetDifficulty} (escala 1-5, donde 1 es muy fácil y 5 es muy difícil). Construye el enunciado,
+la longitud, la ambigüedad de las opciones y la complejidad del razonamiento requerido para que
+correspondan de verdad a ese nivel de dificultad — no pongas siempre un valor intermedio por defecto.`;
 }
 
 const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"];
@@ -146,7 +150,7 @@ function repairUnescapedQuotes(text: string): string {
   return result;
 }
 
-function validateDraft(draft: any, targetLetter: string): string[] {
+function validateDraft(draft: any, targetLetter: string, targetDifficulty: number): string[] {
   const issues: string[] = [];
   if (!draft.stem || draft.stem.length < 20) issues.push("Enunciado demasiado corto");
   if (!Array.isArray(draft.options) || draft.options.length < 2) issues.push("Menos de 2 opciones");
@@ -177,6 +181,9 @@ function validateDraft(draft: any, targetLetter: string): string[] {
     }
   }
   if (!draft.explanation || draft.explanation.length < 20) issues.push("Explicación ausente o corta");
+  if (Number(draft.difficulty) !== targetDifficulty) {
+    issues.push(`La dificultad devuelta (${draft.difficulty}) no coincide con la solicitada (${targetDifficulty})`);
+  }
   const fullText = `${draft.stem ?? ""}\n${draft.explanation ?? ""}`;
   for (const p of FORBIDDEN_PATTERNS) if (p.test(fullText)) issues.push("Contiene patrón no permitido");
   return issues;
@@ -277,6 +284,13 @@ Deno.serve(async (req) => {
     // de la posición de la respuesta correcta a lo largo del lote (ver bug histórico:
     // el modelo copiaba literalmente el "B" del ejemplo del prompt casi siempre).
     const targetLetter = ["A", "B", "C", "D"][i % 4];
+    // Dificultad objetivo aleatoria dentro del rango pedido, fijada ANTES de generar
+    // (mismo motivo que targetLetter: el modelo copiaba literalmente el "3" de ejemplo
+    // del prompt en vez de variar la dificultad — confirmado con datos reales: 44/44
+    // preguntas generadas antes de este fix tenían difficulty=3 sin excepción).
+    const diffMin = body.difficulty_min ?? 1;
+    const diffMax = body.difficulty_max ?? 5;
+    const targetDifficulty = Math.floor(Math.random() * (diffMax - diffMin + 1)) + diffMin;
 
     const { data: task } = await admin
       .from("eco_tasks")
@@ -290,7 +304,7 @@ Deno.serve(async (req) => {
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(task, approach, body.format ?? "mc_single", body.difficulty_min ?? 1, body.difficulty_max ?? 5, body.focus_tags ?? [], targetLetter),
+        buildUserPrompt(task, approach, body.format ?? "mc_single", targetDifficulty, body.focus_tags ?? [], targetLetter),
       );
 
       const cleaned = result.text.replace(/```json|```/g, "").trim();
@@ -316,7 +330,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      const issues = validateDraft(draft, targetLetter);
+      const issues = validateDraft(draft, targetLetter, targetDifficulty);
 
       if (issues.length > 0) {
         failed++;
@@ -333,7 +347,7 @@ Deno.serve(async (req) => {
         explanation: draft.explanation,
         task_id: taskId,
         approach,
-        difficulty: draft.difficulty ?? 3,
+        difficulty: targetDifficulty,
         focus_tags: body.focus_tags ?? [],
         status: "draft", // nunca se publica automáticamente
         generation_job_id: job.id,
