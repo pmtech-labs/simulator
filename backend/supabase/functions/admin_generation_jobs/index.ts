@@ -314,7 +314,12 @@ Deno.serve(async (req) => {
       requested_by: user.id,
       task_ids: body.task_ids,
       approach: normalizeApproach(body.approach),
-      format: body.format ?? "mc_single",
+      // generation_jobs.format es un enum (item_format, el mismo que usa questions.format,
+      // donde "mixed" no tendría sentido para una pregunta individual) -- no admite el
+      // valor "mixed" literal. Cuando se pide mezcla, se guarda "mc_single" aquí solo como
+      // valor representativo de seguimiento del job; el formato REAL de cada pregunta
+      // generada (rotado de verdad) se guarda correctamente en questions.format.
+      format: body.format === "mixed" ? "mc_single" : (body.format ?? "mc_single"),
       count_requested: body.count_requested,
       difficulty_min: body.difficulty_min ?? 1,
       difficulty_max: body.difficulty_max ?? 5,
@@ -329,6 +334,15 @@ Deno.serve(async (req) => {
 
   const normalizedApproach = normalizeApproach(body.approach);
   const approaches = normalizedApproach ? [normalizedApproach] : ["predictive", "agile", "hybrid"];
+  // "Mezcla automática" de formato: SOLO entre los formatos que este pipeline de IA
+  // sabe generar de forma fiable (mc_single, mc_multi, pulldown) -- matching, hotspot
+  // y graphic_based tienen sus propias Edge Functions dedicadas con construcción de
+  // payload por código (admin_generate_matching_question, admin_generate_hotspot_question,
+  // generate_network_diagram_question, generate_earned_value_question), y enhanced_matching
+  // sigue siendo autoría manual por plantillas -- mezclarlos aquí generaría contenido
+  // con la forma equivocada.
+  const MIXED_FORMATS = ["mc_single", "mc_multi", "pulldown"];
+  const formats = body.format === "mixed" ? MIXED_FORMATS : [body.format ?? "mc_single"];
   let generated = 0;
   let failed = 0;
   const errors: string[] = [];
@@ -336,6 +350,7 @@ Deno.serve(async (req) => {
   for (let i = 0; i < body.count_requested; i++) {
     const taskId = body.task_ids[i % body.task_ids.length];
     const approach = approaches[i % approaches.length];
+    const format = formats[i % formats.length];
     // Rota A/B/C/D determinísticamente por ítem para garantizar una distribución real
     // de la posición de la respuesta correcta a lo largo del lote (ver bug histórico:
     // el modelo copiaba literalmente el "B" del ejemplo del prompt casi siempre).
@@ -374,7 +389,7 @@ Deno.serve(async (req) => {
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(task, approach, body.format ?? "mc_single", targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetThemes, targetPerformanceDomain),
+        buildUserPrompt(task, approach, format, targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetThemes, targetPerformanceDomain),
       );
 
       const cleaned = result.text.replace(/```json|```/g, "").trim();
@@ -410,7 +425,7 @@ Deno.serve(async (req) => {
 
       await admin.from("questions").insert({
         item_type: "standalone",
-        format: body.format ?? "mc_single",
+        format,
         stem: draft.stem,
         options: draft.options,
         correct_answer: draft.correct_answer,

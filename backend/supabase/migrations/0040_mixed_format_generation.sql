@@ -1,0 +1,22 @@
+-- =========================================================
+-- 0040: Mezcla automática de formato en admin_generation_jobs (igual que ya existía
+-- para enfoque)
+--
+-- No requiere cambios de esquema. body.format="mixed" ahora rota por ítem entre los
+-- 3 formatos que ESTE pipeline de IA sabe generar de forma fiable: mc_single,
+-- mc_multi, pulldown. Matching, hotspot y graphic_based tienen sus propias Edge
+-- Functions dedicadas (admin_generate_matching_question, admin_generate_hotspot_question,
+-- generate_network_diagram_question, generate_earned_value_question) con construcción
+-- de payload por código -- mezclarlos aquí generaría contenido con la forma
+-- equivocada. enhanced_matching sigue siendo autoría manual por plantillas.
+--
+-- Bug evitado antes de desplegar: generation_jobs.format es un enum (item_format,
+-- el mismo que usa questions.format) que NO admite el valor "mixed" literal --
+-- se guarda "mc_single" ahí solo como valor representativo de seguimiento del job;
+-- el formato REAL de cada pregunta (rotado de verdad) se guarda correctamente en
+-- questions.format.
+--
+-- Verificado con llamada real: format="mixed" con 6 solicitadas generó 3 (mc_single,
+-- mc_multi, pulldown, una de cada), rotación confirmada.
+-- =========================================================
+select 1; -- no-op, migración documental
