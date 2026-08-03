@@ -1,0 +1,11 @@
+-- =========================================================
+-- 0038: Exponer process_group/performance_domain/focus_tags en v_questions_public
+--
+-- Mismo problema que v_question_stats (migracion 0037): esta vista tambien se creo
+-- antes de que existieran estas columnas. v_questions_public la consulta el
+-- frontend DIRECTAMENTE (no via Edge Function) en examService.ts::fetchQuestionMeta
+-- para enriquecer las preguntas del examen con metadatos publicos.
+--
+-- Verificado con REST anonimo real: la vista ya devuelve las 3 columnas.
+-- =========================================================
+select 1; -- no-op, migración documental
