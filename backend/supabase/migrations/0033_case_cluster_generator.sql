@@ -1,0 +1,22 @@
+-- =========================================================
+-- 0033: Generador determinista-asistido de clusters de caso completos
+--
+-- No requiere cambios de esquema nuevos (usa case_clusters + questions.cluster_id
+-- ya existentes). Documenta la nueva capacidad: admin_generate_case_cluster genera
+-- un escenario + 3-5 preguntas hijas COHERENTES ENTRE SÍ en una sola llamada al
+-- modelo (a diferencia de generar cada pregunta por separado, que arriesgaría
+-- incoherencias). Mismo patrón de seguridad que admin_generation_jobs: posición de
+-- respuesta correcta y dificultad se fijan ANTES de generar, por pregunta hija.
+--
+-- También se aumentó el límite de tokens en _shared/llmProviders.ts (parámetro
+-- opcional maxTokens, default 1200 igual que antes) porque el límite fijo de 1200
+-- truncaba el JSON de un cluster completo a mitad -- un cluster necesita mucho más
+-- espacio que una pregunta suelta.
+--
+-- Verificado con lote de prueba real (2 clusters, 5+3 preguntas): coherencia
+-- narrativa confirmada entre preguntas hijas (mismo personaje, progresión temporal
+-- explícita "tres semanas después", "luego del taller"), letras y dificultades bien
+-- distribuidas, las 3 etiquetas de dimensión (grupo de proceso, dominio de
+-- desempeño, temática) compartidas correctamente entre todas las hijas del cluster.
+-- =========================================================
+select 1; -- no-op, migración documental

@@ -79,10 +79,12 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con est
 {"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":<entero 1-5 según se te indique, NUNCA un valor fijo por defecto>}`;
 }
 
-function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string, targetProcessGroup: string, targetTheme: Theme, targetPerformanceDomain: string) {
+function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string, targetProcessGroup: string, targetThemes: Theme[], targetPerformanceDomain: string) {
   const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
   const focusLine = focusTags.length > 0 ? `\nTemas transversales a entretejer si es natural: ${focusTags.join(", ")}` : "";
-  const themeLine = targetTheme ? `\n\nTEMÁTICA (obligatorio): ${THEME_INSTRUCTIONS[targetTheme]}` : "";
+  const themeLine = targetThemes.length > 0
+    ? `\n\nTEMÁTICA(S) (obligatorio, todas las indicadas): ${targetThemes.map((t) => THEME_INSTRUCTIONS[t]).join(" ")}`
+    : "";
   return `Dominio ECO: ${task.eco_domains.name}
 Tarea: ${task.title}
 Enablers de referencia:
@@ -142,15 +144,17 @@ const PERFORMANCE_DOMAIN_LABELS: Record<string, string> = {
   interesados: "Interesados",
 };
 
-// Requisito del PO: "Nuevas Temáticas", distribución 50% entrega de valor / 10%
-// sostenibilidad / 10% IA / 30% ninguna temática añadida.
-type Theme = "entrega_valor" | "sostenibilidad" | "ia" | null;
-function pickWeightedTheme(): Theme {
-  const r = Math.random();
-  if (r < 0.5) return "entrega_valor";
-  if (r < 0.6) return "sostenibilidad";
-  if (r < 0.7) return "ia";
-  return null;
+// Requisito del PO: "Nuevas Temáticas", NO son excluyentes entre sí (una pregunta
+// puede llevar varias a la vez) -- se decide cada una con una tirada independiente:
+// 50% probabilidad de entrega de valor, 10% sostenibilidad, 10% IA. Si ninguna sale,
+// la pregunta queda sin temática añadida (~30% resultante, sin ser un tope estricto).
+type Theme = "entrega_valor" | "sostenibilidad" | "ia";
+function pickThemes(): Theme[] {
+  const themes: Theme[] = [];
+  if (Math.random() < 0.5) themes.push("entrega_valor");
+  if (Math.random() < 0.1) themes.push("sostenibilidad");
+  if (Math.random() < 0.1) themes.push("ia");
+  return themes;
 }
 const THEME_INSTRUCTIONS: Record<string, string> = {
   entrega_valor: "El escenario debe integrar de forma natural el concepto de entrega basada en el valor (priorizar, medir o comunicar el valor real que el proyecto aporta al negocio o al cliente).",
@@ -356,7 +360,7 @@ Deno.serve(async (req) => {
     // 10% sostenibilidad / 10% IA / 30% ninguna. Se decide ANTES de generar y se le
     // pide al modelo que integre el tema de forma natural en el escenario -- el tag
     // final se fija por código, no se confía en que el modelo lo autodeclare.
-    const targetTheme = pickWeightedTheme();
+    const targetThemes = pickThemes();
 
     const { data: task } = await admin
       .from("eco_tasks")
@@ -370,7 +374,7 @@ Deno.serve(async (req) => {
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(task, approach, body.format ?? "mc_single", targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetTheme, targetPerformanceDomain),
+        buildUserPrompt(task, approach, body.format ?? "mc_single", targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetThemes, targetPerformanceDomain),
       );
 
       const cleaned = result.text.replace(/```json|```/g, "").trim();
@@ -416,7 +420,7 @@ Deno.serve(async (req) => {
         difficulty: targetDifficulty,
         process_group: targetProcessGroup,
         performance_domain: targetPerformanceDomain,
-        focus_tags: targetTheme ? [...(body.focus_tags ?? []), targetTheme] : (body.focus_tags ?? []),
+        focus_tags: [...(body.focus_tags ?? []), ...targetThemes],
         status: "draft", // nunca se publica automáticamente
         generation_job_id: job.id,
       });

@@ -13,21 +13,21 @@ export interface GenerationResult {
   text: string;
 }
 
-export async function callLlm(connector: LlmConnector, system: string, userPrompt: string): Promise<GenerationResult> {
+export async function callLlm(connector: LlmConnector, system: string, userPrompt: string, maxTokens = 1200): Promise<GenerationResult> {
   switch (connector.provider) {
     case "anthropic":
-      return callAnthropic(connector, system, userPrompt);
+      return callAnthropic(connector, system, userPrompt, maxTokens);
     case "openai":
     case "openai_compatible":
-      return callOpenAiCompatible(connector, system, userPrompt);
+      return callOpenAiCompatible(connector, system, userPrompt, maxTokens);
     case "google":
-      return callGoogle(connector, system, userPrompt);
+      return callGoogle(connector, system, userPrompt, maxTokens);
     default:
       throw new Error(`Proveedor no soportado: ${connector.provider}`);
   }
 }
 
-async function callAnthropic(connector: LlmConnector, system: string, userPrompt: string): Promise<GenerationResult> {
+async function callAnthropic(connector: LlmConnector, system: string, userPrompt: string, maxTokens: number): Promise<GenerationResult> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -37,7 +37,7 @@ async function callAnthropic(connector: LlmConnector, system: string, userPrompt
     },
     body: JSON.stringify({
       model: connector.model_id,
-      max_tokens: 1200,
+      max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: userPrompt }],
     }),
@@ -50,7 +50,7 @@ async function callAnthropic(connector: LlmConnector, system: string, userPrompt
   return { text: textBlock.text };
 }
 
-async function callOpenAiCompatible(connector: LlmConnector, system: string, userPrompt: string): Promise<GenerationResult> {
+async function callOpenAiCompatible(connector: LlmConnector, system: string, userPrompt: string, maxTokens: number): Promise<GenerationResult> {
   const baseUrl = connector.api_base_url ?? "https://api.openai.com/v1";
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -64,7 +64,7 @@ async function callOpenAiCompatible(connector: LlmConnector, system: string, use
         { role: "system", content: system },
         { role: "user", content: userPrompt },
       ],
-      max_tokens: 1200,
+      max_tokens: maxTokens,
     }),
   });
 
@@ -75,7 +75,7 @@ async function callOpenAiCompatible(connector: LlmConnector, system: string, use
   return { text };
 }
 
-async function callGoogle(connector: LlmConnector, system: string, userPrompt: string): Promise<GenerationResult> {
+async function callGoogle(connector: LlmConnector, system: string, userPrompt: string, maxTokens: number): Promise<GenerationResult> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${connector.model_id}:generateContent?key=${connector.apiKey}`,
     {
@@ -87,7 +87,7 @@ async function callGoogle(connector: LlmConnector, system: string, userPrompt: s
         // thinkingBudget: 0 desactiva el razonamiento extendido — esta tarea es redacción
         // directa, no necesita "pensar" y el thinking consumía parte de maxOutputTokens,
         // dejando la respuesta JSON truncada a mitad.
-        generationConfig: { maxOutputTokens: 3000 },
+        generationConfig: { maxOutputTokens: Math.max(maxTokens, 3000) },
       }),
     },
   );

@@ -259,20 +259,20 @@ function selectFullSim(pool: any[]) {
   };
   const pdCounts: Record<string, number> = Object.fromEntries(PERFORMANCE_DOMAINS.map((d) => [d, 0]));
 
+  // Requisito del PO: las temáticas NO son excluyentes -- una pregunta puede llevar
+  // varias a la vez. Se trackea cada una de forma independiente (no como un reparto
+  // que sume 100%), más un contador aparte de "sin ninguna temática".
   const themeTargets: Record<string, number> = {
     entrega_valor: Math.round(targetTotal * 0.5),
     sostenibilidad: Math.round(targetTotal * 0.1),
     ia: Math.round(targetTotal * 0.1),
-    ninguna: targetTotal - Math.round(targetTotal * 0.5) - Math.round(targetTotal * 0.1) - Math.round(targetTotal * 0.1),
   };
-  const themeCounts: Record<string, number> = { entrega_valor: 0, sostenibilidad: 0, ia: 0, ninguna: 0 };
+  const themeCounts: Record<string, number> = { entrega_valor: 0, sostenibilidad: 0, ia: 0 };
+  let ninguna = 0;
+  const ningunaTarget = Math.round(targetTotal * 0.3);
 
-  function themeKeyOf(q: any): string {
-    const tags: string[] = q.focus_tags ?? [];
-    if (tags.includes("entrega_valor")) return "entrega_valor";
-    if (tags.includes("sostenibilidad")) return "sostenibilidad";
-    if (tags.includes("ia")) return "ia";
-    return "ninguna";
+  function tagsOf(q: any): string[] {
+    return q.focus_tags ?? [];
   }
 
   // Cuanto más "hueco" le quede a un candidato en grupo de proceso / dominio de
@@ -284,7 +284,10 @@ function selectFullSim(pool: any[]) {
     const pdRoom = q.performance_domain && pdCounts[q.performance_domain] !== undefined
       ? Math.max(0, pdTargets[q.performance_domain] - pdCounts[q.performance_domain])
       : 0;
-    const thRoom = Math.max(0, themeTargets[themeKeyOf(q)] - themeCounts[themeKeyOf(q)]);
+    const tags = tagsOf(q);
+    const thRoom = tags.length > 0
+      ? tags.reduce((sum, t) => sum + (themeTargets[t] !== undefined ? Math.max(0, themeTargets[t] - themeCounts[t]) : 0), 0)
+      : Math.max(0, ningunaTarget - ninguna);
     return pgRoom + pdRoom + thRoom + Math.random();
   }
 
@@ -326,7 +329,12 @@ function selectFullSim(pool: any[]) {
       for (const item of block) {
         if (item.process_group && pgCounts[item.process_group] !== undefined) pgCounts[item.process_group]++;
         if (item.performance_domain && pdCounts[item.performance_domain] !== undefined) pdCounts[item.performance_domain]++;
-        themeCounts[themeKeyOf(item)]++;
+        const tags = tagsOf(item);
+        if (tags.length > 0) {
+          for (const t of tags) if (themeCounts[t] !== undefined) themeCounts[t]++;
+        } else {
+          ninguna++;
+        }
       }
     }
     return picked;
