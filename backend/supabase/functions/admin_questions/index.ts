@@ -51,6 +51,12 @@ Deno.serve(async (req) => {
     const approach = params.get("approach");
     if (approach) query = query.eq("approach", approach);
 
+    const processGroup = params.get("process_group");
+    if (processGroup) query = query.eq("process_group", processGroup);
+
+    const performanceDomain = params.get("performance_domain");
+    if (performanceDomain) query = query.eq("performance_domain", performanceDomain);
+
     const jobId = params.get("job_id");
     if (jobId) query = query.eq("generation_job_id", jobId);
 

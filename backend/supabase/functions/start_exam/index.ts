@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
 
   const { data: renderable } = await admin
     .from("questions")
-    .select("id, item_type, format, cluster_id, stem, options, difficulty, practicum_payload, case_clusters(id, title, scenario_text, media)")
+    .select("id, item_type, format, cluster_id, stem, options, difficulty, process_group, performance_domain, focus_tags, practicum_payload, case_clusters(id, title, scenario_text, media)")
     .in("id", selected.map((q) => q.id));
 
   // No se filtra correct_answer/explanation aquí: ese campo ni siquiera se selecciona.

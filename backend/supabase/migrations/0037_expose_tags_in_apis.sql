@@ -1,0 +1,26 @@
+-- =========================================================
+-- 0037: Exponer process_group/performance_domain/focus_tags en las APIs (backend)
+--
+-- Encontrado por el usuario: las etiquetas nuevas (añadidas en migraciones 0030-0032)
+-- no llegaban a ningun sitio del frontend. Causa raiz: v_question_stats (de la que lee
+-- TODO el panel admin) se recreo por ultima vez en la migracion 0025, ANTES de que
+-- existieran estas columnas -- por tanto ni siquiera estaban en el SELECT * de la
+-- vista, independientemente de lo que hiciera el frontend.
+--
+-- Cambios:
+-- 1. v_question_stats: añadidas process_group, performance_domain, focus_tags.
+-- 2. admin_questions (GET): nuevos parametros de filtro process_group y
+--    performance_domain (ademas de los ya existentes domain_code/task_id/approach).
+-- 3. start_exam: las dos consultas (pool de seleccion Y "renderable" que se envia al
+--    candidato) ahora incluyen tambien estas 3 columnas -- antes SI se usaban
+--    internamente para el reparto estratificado, pero NUNCA se devolvian al frontend
+--    para mostrarlas al candidato durante el examen.
+--
+-- Verificado con llamadas reales: admin_questions?process_group=closing devuelve
+-- solo preguntas 'closing': start_exam devuelve process_group/performance_domain/
+-- focus_tags en cada item del examen.
+--
+-- Resto del trabajo (mostrar badges y añadir selectores de filtro en cada pantalla)
+-- se hace en el frontend via Lovable.
+-- =========================================================
+select 1; -- no-op, migración documental
