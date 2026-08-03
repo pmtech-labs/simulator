@@ -19,6 +19,7 @@ interface StartExamBody {
   task_ids?: string[];
   question_count?: number;
   unit_id?: string; // requerido para unit_quiz y cumulative
+  approach_filter?: "predictive" | "agile" | "hybrid" | "agile_hybrid"; // práctica dirigida por enfoque
 }
 
 const FULL_SIM_TOTAL = 180;
@@ -123,6 +124,16 @@ Deno.serve(async (req) => {
   }
   if ((body.mode === "domain_drill" || body.mode === "custom" || body.mode === "unit_quiz" || body.mode === "cumulative") && resolvedTaskIds?.length) {
     query = query.in("task_id", resolvedTaskIds);
+  }
+  // Práctica dirigida por enfoque (predictivo/ágil/híbrido). Nunca se aplica en
+  // full_sim, que ya tiene su propio reparto real 40/60 -- este filtro es solo para
+  // los modos de práctica, cuando el candidato quiere entrenar un enfoque concreto.
+  if (body.mode !== "full_sim" && body.approach_filter) {
+    if (body.approach_filter === "agile_hybrid") {
+      query = query.in("approach", ["agile", "hybrid"]);
+    } else {
+      query = query.eq("approach", body.approach_filter);
+    }
   }
 
   const { data: pool, error: poolErr } = await query;
