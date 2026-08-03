@@ -20,6 +20,8 @@ interface StartExamBody {
   question_count?: number;
   unit_id?: string; // requerido para unit_quiz y cumulative
   approach_filter?: "predictive" | "agile" | "hybrid" | "agile_hybrid"; // práctica dirigida por enfoque
+  process_group_filter?: string; // práctica dirigida por área de enfoque/grupo de proceso
+  performance_domain_filter?: string; // práctica dirigida por dominio de desempeño
 }
 
 const FULL_SIM_TOTAL = 180;
@@ -134,6 +136,16 @@ Deno.serve(async (req) => {
     } else {
       query = query.eq("approach", body.approach_filter);
     }
+  }
+  // Práctica dirigida por área de enfoque (grupo de proceso) o dominio de desempeño.
+  // Igual que approach_filter: nunca se aplica en full_sim, que ya tiene su propio
+  // reparto real -- solo tiene sentido cuando el candidato quiere entrenar
+  // específicamente una etapa del ciclo de vida o un dominio de desempeño concreto.
+  if (body.mode !== "full_sim" && body.process_group_filter) {
+    query = query.eq("process_group", body.process_group_filter);
+  }
+  if (body.mode !== "full_sim" && body.performance_domain_filter) {
+    query = query.eq("performance_domain", body.performance_domain_filter);
   }
 
   const { data: pool, error: poolErr } = await query;

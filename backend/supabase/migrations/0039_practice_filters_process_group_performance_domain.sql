@@ -1,0 +1,13 @@
+-- =========================================================
+-- 0039: Filtros de práctica por grupo de proceso y dominio de desempeño
+--
+-- No requiere cambios de esquema. start_exam acepta ahora process_group_filter y
+-- performance_domain_filter en el body (solo aplican fuera de full_sim, igual que
+-- approach_filter ya existente), para que el candidato pueda entrenar
+-- especificamente una etapa del ciclo de vida o un dominio de desempeño concreto
+-- desde /practica.
+--
+-- Verificado con llamada real: start_exam con process_group_filter="closing"
+-- devuelve exclusivamente preguntas de esa etapa.
+-- =========================================================
+select 1; -- no-op, migración documental
