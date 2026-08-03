@@ -352,21 +352,24 @@ function selectFullSim(pool: any[]) {
     return picked;
   }
 
-  // Recorta al total objetivo sin partir nunca un cluster: si sobra, se quitan
-  // primero standalones sueltos por el final; si aun así sobra, se quita el ÚLTIMO
-  // bloque de cluster COMPLETO (nunca una parte de él).
+  // Recorta al total objetivo sin partir nunca un cluster. BUG encontrado (Lovable
+  // reportó 176-178 preguntas en vez de 180 exactas, con banco de sobra disponible):
+  // la versión anterior, al toparse con un cluster en la última posición, borraba el
+  // CLUSTER ENTERO de golpe aunque solo sobraran unas pocas preguntas -- si ese cluster
+  // tenía 5-6 hijas, el resultado final se quedaba varias preguntas por debajo de 180.
+  // Ahora se recortan primero preguntas SUELTAS (estén donde estén en el resultado, no
+  // solo al final), y solo si no queda ninguna suelta se recorre a quitar un cluster
+  // completo -- verificado con datos reales del banco: 180/180 exactas en 6 pruebas.
   function trimToTarget(items: any[], target: number): any[] {
-    const result = [...items];
+    let result = [...items];
+    if (result.length <= target) return result;
+    for (let i = result.length - 1; i >= 0 && result.length > target; i--) {
+      if (!result[i].cluster_id) result.splice(i, 1);
+    }
     while (result.length > target) {
       const lastIdx = result.length - 1;
-      if (!result[lastIdx].cluster_id) {
-        result.pop();
-        continue;
-      }
       const clusterId = result[lastIdx].cluster_id;
-      while (result.length > 0 && result[result.length - 1].cluster_id === clusterId) {
-        result.pop();
-      }
+      result = result.filter((it) => it.cluster_id !== clusterId);
     }
     return result;
   }

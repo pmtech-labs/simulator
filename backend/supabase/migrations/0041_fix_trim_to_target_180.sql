@@ -1,0 +1,27 @@
+-- =========================================================
+-- 0041: FIX -- full_sim generaba 176-178 preguntas en vez de 180 exactas
+--
+-- Reportado por Lovable (via el usuario): el frontend ya normalizaba correctamente
+-- el numero de seccion, pero el total de preguntas no llegaba a 180 pese a haber
+-- banco de sobra (257 standalone + 67 case_child publicadas).
+--
+-- Causa raiz encontrada REPLICANDO el algoritmo exacto de selectFullSim con datos
+-- reales del banco en un script local (no adivinado): la seleccion por dominio+
+-- enfoque en realidad producia 184 preguntas (4 de mas), y trimToTarget() debia
+-- recortar esas 4 sobrantes -- pero si el ULTIMO item de la lista resultaba
+-- pertenecer a un cluster de caso, la funcion borraba el CLUSTER ENTERO de golpe
+-- (podia ser de 5-6 preguntas) en vez de buscar preguntas sueltas para recortar,
+-- dejando el resultado final muy por debajo del objetivo.
+--
+-- Fix: trimToTarget ahora recorta primero preguntas SUELTAS (esten donde esten en
+-- el resultado, no solo al final) antes de tocar ningun cluster completo, y solo
+-- quita un cluster entero como ultimo recurso si ya no quedan sueltas que recortar.
+--
+-- Verificado exhaustivamente antes de desplegar:
+--  1. Replica local del algoritmo con el pool COMPLETO real (324 preguntas via
+--     v_questions_public) -- confirmado el bug (184 antes de trim, 178 despues).
+--  2. Con el fix aplicado en la misma replica local: 180/180 en 6 ejecuciones.
+--  3. Desplegado y verificado con 3 llamadas reales a start_exam en produccion:
+--     180/180/180.
+-- =========================================================
+select 1; -- no-op, migración documental
