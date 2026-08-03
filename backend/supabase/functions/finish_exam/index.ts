@@ -26,6 +26,9 @@ const RESULT_DISCLAIMER =
 // criterio de referencia propio de PMTech Simulator para emitir el diploma de logro —
 // debe declararse siempre como tal, nunca presentarse como la nota de corte real de PMI.
 const DIPLOMA_THRESHOLD_PCT = 65;
+// Umbral para considerar "aprobada" una lección (unit_quiz) de cara al diploma de
+// programa completo. Mismo criterio de referencia propio, no una nota oficial de PMI.
+const LESSON_THRESHOLD_PCT = 60;
 const DIPLOMA_DISCLAIMER =
   "Este diploma reconoce tu desempeño en un simulacro completo según un criterio de " +
   "referencia propio de PMTech Simulator. PMI no publica una nota de corte oficial para " +
@@ -125,12 +128,78 @@ Deno.serve(async (req) => {
         score_pct: scorePct,
         score_by_domain: scoreByDomain,
         threshold_pct: DIPLOMA_THRESHOLD_PCT,
+        diploma_type: "simulacro_completo",
       })
       .select("id, issued_at")
       .single();
     // No se bloquea la respuesta del examen si falla la emisión del diploma (ej. ya
     // existía por un reintento) — el resultado del examen es lo prioritario.
     if (!diplomaErr && diplomaRow) diploma = diplomaRow;
+  }
+
+  // Diploma de "programa completo": exige haber aprobado el unit_quiz de TODAS las
+  // lecciones del temario que tienen tareas ECO asociadas, + al menos un simulacro
+  // completo con buen desempeño. Se comprueba en cada finish_exam (no solo full_sim),
+  // ya que la pieza que falte puede completarse en cualquier tipo de examen.
+  let capstoneDiploma: { id: string; issued_at: string } | null = null;
+  try {
+    const { data: existingCapstone } = await admin
+      .from("diplomas")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("diploma_type", "programa_completo")
+      .maybeSingle();
+
+    if (!existingCapstone) {
+      const { data: unitsWithTasks } = await admin
+        .from("course_unit_tasks")
+        .select("course_unit_id, course_units!inner(id, status)")
+        .eq("course_units.status", "published");
+
+      const requiredUnitIds = [...new Set((unitsWithTasks ?? []).map((r: any) => r.course_unit_id))];
+
+      const { data: unitQuizExams } = await admin
+        .from("exams")
+        .select("config, score_pct")
+        .eq("user_id", user.id)
+        .eq("mode", "unit_quiz")
+        .eq("status", "completed")
+        .gte("score_pct", LESSON_THRESHOLD_PCT);
+
+      const passedUnitIds = new Set(
+        (unitQuizExams ?? []).map((e: any) => e.config?.unit_id).filter(Boolean),
+      );
+
+      const allLessonsPassed = requiredUnitIds.length > 0 && requiredUnitIds.every((id) => passedUnitIds.has(id));
+
+      const { data: qualifyingFullSim } = await admin
+        .from("exams")
+        .select("id, score_pct")
+        .eq("user_id", user.id)
+        .eq("mode", "full_sim")
+        .eq("status", "completed")
+        .gte("score_pct", DIPLOMA_THRESHOLD_PCT)
+        .limit(1)
+        .maybeSingle();
+
+      if (allLessonsPassed && qualifyingFullSim) {
+        const { data: capstoneRow, error: capstoneErr } = await admin
+          .from("diplomas")
+          .insert({
+            user_id: user.id,
+            exam_id: exam.id,
+            score_pct: scorePct,
+            score_by_domain: scoreByDomain,
+            threshold_pct: DIPLOMA_THRESHOLD_PCT,
+            diploma_type: "programa_completo",
+          })
+          .select("id, issued_at")
+          .single();
+        if (!capstoneErr && capstoneRow) capstoneDiploma = capstoneRow;
+      }
+    }
+  } catch {
+    // No bloquea el resultado del examen si falla esta comprobación adicional.
   }
 
   return jsonResponse({
@@ -146,6 +215,9 @@ Deno.serve(async (req) => {
       : null,
     diploma: diploma
       ? { id: diploma.id, issued_at: diploma.issued_at, threshold_pct: DIPLOMA_THRESHOLD_PCT, disclaimer: DIPLOMA_DISCLAIMER }
+      : null,
+    capstone_diploma: capstoneDiploma
+      ? { id: capstoneDiploma.id, issued_at: capstoneDiploma.issued_at, disclaimer: DIPLOMA_DISCLAIMER }
       : null,
   });
 });
