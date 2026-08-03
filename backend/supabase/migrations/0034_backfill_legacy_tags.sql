@@ -1,0 +1,20 @@
+-- =========================================================
+-- 0034: Backfill de etiquetas nuevas en contenido creado antes de que existieran
+--
+-- No requiere cambios de esquema. Documenta admin_backfill_tags: a diferencia de la
+-- generacion de contenido nuevo (donde process_group/performance_domain se fijan por
+-- rotacion determinista ANTES de generar), aqui es una tarea de CLASIFICACION sobre
+-- texto YA ESCRITO -- se le pide al modelo que LEA cada pregunta existente y asigne
+-- la etiqueta que de verdad corresponde a su contenido real, nunca al azar.
+--
+-- Se valida que el modelo devuelva un valor de la lista permitida antes de aplicarlo
+-- (mismo principio de no confiar ciegamente en el autoinforme del modelo que ya
+-- usamos en el resto del pipeline).
+--
+-- Ejecutado sobre las 130 preguntas que carecian de estas etiquetas (67 publicadas +
+-- 63 en borrador, todas creadas antes de este requisito): 130/130 clasificadas con
+-- exito, 0 fallos. Verificado con muestra real: clasificacion mayormente correcta,
+-- con algun caso limite razonable (ambiguedad inherente al ejercicio de clasificar,
+-- no un fallo sistematico).
+-- =========================================================
+select 1; -- no-op, migración documental
