@@ -155,6 +155,7 @@ Deno.serve(async (req) => {
         task_id: body.task_id,
         approach: body.approach ?? "predictive",
         difficulty: q.difficulty,
+        process_group: "monitoring_control", // interpretar EVM es inherentemente de seguimiento
         status: "draft",
         practicum_payload: q.practicum_payload,
         generation_job_id: null,

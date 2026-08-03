@@ -79,16 +79,17 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con est
 {"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":<entero 1-5 según se te indique, NUNCA un valor fijo por defecto>}`;
 }
 
-function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string) {
+function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string, targetProcessGroup: string, targetTheme: Theme) {
   const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
   const focusLine = focusTags.length > 0 ? `\nTemas transversales a entretejer si es natural: ${focusTags.join(", ")}` : "";
+  const themeLine = targetTheme ? `\n\nTEMÁTICA (obligatorio): ${THEME_INSTRUCTIONS[targetTheme]}` : "";
   return `Dominio ECO: ${task.eco_domains.name}
 Tarea: ${task.title}
 Enablers de referencia:
 ${enablers}
 
 Enfoque de gestión de proyectos: ${approach}
-Formato: ${format}${focusLine}
+Formato: ${format}${focusLine}${themeLine}
 
 Genera UNA pregunta de examen tipo PMP en español (neutro, España/LATAM), situacional, evaluando esta tarea.
 
@@ -101,10 +102,42 @@ no generes la pregunta con la correcta en otra posición y la corrijas después.
 DIFICULTAD (obligatorio, no lo cambies): el campo "difficulty" de tu respuesta debe ser exactamente el
 número ${targetDifficulty} (escala 1-5, donde 1 es muy fácil y 5 es muy difícil). Construye el enunciado,
 la longitud, la ambigüedad de las opciones y la complejidad del razonamiento requerido para que
-correspondan de verdad a ese nivel de dificultad — no pongas siempre un valor intermedio por defecto.`;
+correspondan de verdad a ese nivel de dificultad — no pongas siempre un valor intermedio por defecto.
+
+GRUPO DE PROCESO / ÁREA DE ENFOQUE (obligatorio): el escenario debe situarse claramente en la etapa de
+"${PROCESS_GROUP_LABELS[targetProcessGroup]}" del ciclo de vida del proyecto (Inicio, Planificación,
+Ejecución, Monitoreo y Control, o Cierre). Deja claro en el propio enunciado en qué momento del proyecto
+ocurre la situación, para que sea reconocible sin ambigüedad.`;
 }
 
 const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"];
+
+// Requisito del PO: "Áreas de Enfoque" (grupos de proceso clásicos), objetivo 20% cada
+// uno en el simulacro completo.
+const PROCESS_GROUPS = ["initiation", "planning", "execution", "monitoring_control", "closing"] as const;
+const PROCESS_GROUP_LABELS: Record<string, string> = {
+  initiation: "Inicio",
+  planning: "Planificación",
+  execution: "Ejecución",
+  monitoring_control: "Monitoreo y Control",
+  closing: "Cierre",
+};
+
+// Requisito del PO: "Nuevas Temáticas", distribución 50% entrega de valor / 10%
+// sostenibilidad / 10% IA / 30% ninguna temática añadida.
+type Theme = "entrega_valor" | "sostenibilidad" | "ia" | null;
+function pickWeightedTheme(): Theme {
+  const r = Math.random();
+  if (r < 0.5) return "entrega_valor";
+  if (r < 0.6) return "sostenibilidad";
+  if (r < 0.7) return "ia";
+  return null;
+}
+const THEME_INSTRUCTIONS: Record<string, string> = {
+  entrega_valor: "El escenario debe integrar de forma natural el concepto de entrega basada en el valor (priorizar, medir o comunicar el valor real que el proyecto aporta al negocio o al cliente).",
+  sostenibilidad: "El escenario debe integrar de forma natural una consideración de sostenibilidad (impacto ambiental, social o de largo plazo de las decisiones del proyecto).",
+  ia: "El escenario debe integrar de forma natural el uso de inteligencia artificial como herramienta de apoyo en la gestión del proyecto (no como tema central de la pregunta, sino como parte realista del contexto).",
+};
 
 // Reparación de emergencia: el modelo a veces cuela comillas dobles literales dentro
 // del texto (stem/explanation) pese a la instrucción del prompt, lo que rompe el JSON
@@ -292,6 +325,16 @@ Deno.serve(async (req) => {
     const diffMax = body.difficulty_max ?? 5;
     const targetDifficulty = Math.floor(Math.random() * (diffMax - diffMin + 1)) + diffMin;
 
+    // Área de enfoque (grupo de proceso): rotación determinista para garantizar el
+    // 20% exacto de cada uno en el lote, en vez de fiarse de que el modelo lo varíe.
+    const targetProcessGroup = PROCESS_GROUPS[i % PROCESS_GROUPS.length];
+
+    // Nueva temática (requisito del PO): distribución ponderada 50% entrega de valor /
+    // 10% sostenibilidad / 10% IA / 30% ninguna. Se decide ANTES de generar y se le
+    // pide al modelo que integre el tema de forma natural en el escenario -- el tag
+    // final se fija por código, no se confía en que el modelo lo autodeclare.
+    const targetTheme = pickWeightedTheme();
+
     const { data: task } = await admin
       .from("eco_tasks")
       .select("id, title, eco_domains(name), eco_enablers(description)")
@@ -304,7 +347,7 @@ Deno.serve(async (req) => {
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(task, approach, body.format ?? "mc_single", targetDifficulty, body.focus_tags ?? [], targetLetter),
+        buildUserPrompt(task, approach, body.format ?? "mc_single", targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetTheme),
       );
 
       const cleaned = result.text.replace(/```json|```/g, "").trim();
@@ -348,7 +391,8 @@ Deno.serve(async (req) => {
         task_id: taskId,
         approach,
         difficulty: targetDifficulty,
-        focus_tags: body.focus_tags ?? [],
+        process_group: targetProcessGroup,
+        focus_tags: targetTheme ? [...(body.focus_tags ?? []), targetTheme] : (body.focus_tags ?? []),
         status: "draft", // nunca se publica automáticamente
         generation_job_id: job.id,
       });
