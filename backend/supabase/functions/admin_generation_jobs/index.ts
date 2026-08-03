@@ -79,7 +79,7 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con est
 {"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":<entero 1-5 según se te indique, NUNCA un valor fijo por defecto>}`;
 }
 
-function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string, targetProcessGroup: string, targetTheme: Theme) {
+function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string, targetProcessGroup: string, targetTheme: Theme, targetPerformanceDomain: string) {
   const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
   const focusLine = focusTags.length > 0 ? `\nTemas transversales a entretejer si es natural: ${focusTags.join(", ")}` : "";
   const themeLine = targetTheme ? `\n\nTEMÁTICA (obligatorio): ${THEME_INSTRUCTIONS[targetTheme]}` : "";
@@ -107,7 +107,12 @@ correspondan de verdad a ese nivel de dificultad — no pongas siempre un valor 
 GRUPO DE PROCESO / ÁREA DE ENFOQUE (obligatorio): el escenario debe situarse claramente en la etapa de
 "${PROCESS_GROUP_LABELS[targetProcessGroup]}" del ciclo de vida del proyecto (Inicio, Planificación,
 Ejecución, Monitoreo y Control, o Cierre). Deja claro en el propio enunciado en qué momento del proyecto
-ocurre la situación, para que sea reconocible sin ambigüedad.`;
+ocurre la situación, para que sea reconocible sin ambigüedad.
+
+DOMINIO DE DESEMPEÑO (obligatorio, no lo cambies): la pregunta debe girar principalmente en torno a
+"${PERFORMANCE_DOMAIN_LABELS[targetPerformanceDomain]}". Esta etiqueta es independiente de la tarea ECO
+indicada arriba — no hace falta que coincidan; solo asegúrate de que el contenido real de la pregunta
+(la decisión que debe tomar el candidato) esté genuinamente relacionado con "${PERFORMANCE_DOMAIN_LABELS[targetPerformanceDomain]}".`;
 }
 
 const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"];
@@ -121,6 +126,20 @@ const PROCESS_GROUP_LABELS: Record<string, string> = {
   execution: "Ejecución",
   monitoring_control: "Monitoreo y Control",
   closing: "Cierre",
+};
+
+// Requisito del PO: "Dominios de Desempeño", etiqueta INDEPENDIENTE de la tarea ECO
+// (aclarado explícitamente por el PO: no se empareja con las 26 tareas, ningún
+// simulador lo hace -- se decide directamente por el contenido de la pregunta).
+const PERFORMANCE_DOMAINS = ["gobernanza", "alcance", "cronograma", "finanzas", "recursos", "riesgos", "interesados"] as const;
+const PERFORMANCE_DOMAIN_LABELS: Record<string, string> = {
+  gobernanza: "Gobernanza",
+  alcance: "Alcance",
+  cronograma: "Cronograma",
+  finanzas: "Finanzas",
+  recursos: "Recursos",
+  riesgos: "Riesgos",
+  interesados: "Interesados",
 };
 
 // Requisito del PO: "Nuevas Temáticas", distribución 50% entrega de valor / 10%
@@ -329,6 +348,10 @@ Deno.serve(async (req) => {
     // 20% exacto de cada uno en el lote, en vez de fiarse de que el modelo lo varíe.
     const targetProcessGroup = PROCESS_GROUPS[i % PROCESS_GROUPS.length];
 
+    // Dominio de desempeño: rotación determinista (~14-15% cada uno de los 7),
+    // etiqueta independiente de la tarea ECO (aclarado por el PO).
+    const targetPerformanceDomain = PERFORMANCE_DOMAINS[i % PERFORMANCE_DOMAINS.length];
+
     // Nueva temática (requisito del PO): distribución ponderada 50% entrega de valor /
     // 10% sostenibilidad / 10% IA / 30% ninguna. Se decide ANTES de generar y se le
     // pide al modelo que integre el tema de forma natural en el escenario -- el tag
@@ -347,7 +370,7 @@ Deno.serve(async (req) => {
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(task, approach, body.format ?? "mc_single", targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetTheme),
+        buildUserPrompt(task, approach, body.format ?? "mc_single", targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetTheme, targetPerformanceDomain),
       );
 
       const cleaned = result.text.replace(/```json|```/g, "").trim();
@@ -392,6 +415,7 @@ Deno.serve(async (req) => {
         approach,
         difficulty: targetDifficulty,
         process_group: targetProcessGroup,
+        performance_domain: targetPerformanceDomain,
         focus_tags: targetTheme ? [...(body.focus_tags ?? []), targetTheme] : (body.focus_tags ?? []),
         status: "draft", // nunca se publica automáticamente
         generation_job_id: job.id,

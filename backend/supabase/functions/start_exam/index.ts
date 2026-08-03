@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
 
   let query = admin
     .from("questions")
-    .select("id, item_type, format, cluster_id, task_id, approach, process_group, focus_tags, eco_tasks(domain_id, eco_domains(code))")
+    .select("id, item_type, format, cluster_id, task_id, approach, process_group, performance_domain, focus_tags, eco_tasks(domain_id, eco_domains(code))")
     .eq("status", "published");
 
   if (!includesPracticumFull) {
@@ -249,6 +249,16 @@ function selectFullSim(pool: any[]) {
   for (const pg of PROCESS_GROUPS) pgTargets[pg] = Math.round(targetTotal * 0.2);
   const pgCounts: Record<string, number> = { initiation: 0, planning: 0, execution: 0, monitoring_control: 0, closing: 0 };
 
+  // Requisito del PO: "Dominios de Desempeño", ~14-15% cada uno de los 7.
+  const PERFORMANCE_DOMAINS = ["gobernanza", "alcance", "cronograma", "finanzas", "recursos", "riesgos", "interesados"];
+  const pdTargets: Record<string, number> = {
+    gobernanza: Math.round(targetTotal * 0.15), alcance: Math.round(targetTotal * 0.14),
+    cronograma: Math.round(targetTotal * 0.14), finanzas: Math.round(targetTotal * 0.14),
+    recursos: Math.round(targetTotal * 0.14), riesgos: Math.round(targetTotal * 0.14),
+    interesados: Math.round(targetTotal * 0.15),
+  };
+  const pdCounts: Record<string, number> = Object.fromEntries(PERFORMANCE_DOMAINS.map((d) => [d, 0]));
+
   const themeTargets: Record<string, number> = {
     entrega_valor: Math.round(targetTotal * 0.5),
     sostenibilidad: Math.round(targetTotal * 0.1),
@@ -265,48 +275,100 @@ function selectFullSim(pool: any[]) {
     return "ninguna";
   }
 
-  // Cuanto más "hueco" le quede a un candidato en su grupo de proceso/temática frente
-  // al objetivo, más prioridad recibe -- así el hueco se rellena activamente en vez de
-  // depender de que el azar puro lo consiga.
+  // Cuanto más "hueco" le quede a un candidato en grupo de proceso / dominio de
+  // desempeño / temática frente al objetivo, más prioridad recibe.
   function stratifiedScore(q: any): number {
     const pgRoom = q.process_group && pgCounts[q.process_group] !== undefined
       ? Math.max(0, pgTargets[q.process_group] - pgCounts[q.process_group])
       : 0;
+    const pdRoom = q.performance_domain && pdCounts[q.performance_domain] !== undefined
+      ? Math.max(0, pdTargets[q.performance_domain] - pdCounts[q.performance_domain])
+      : 0;
     const thRoom = Math.max(0, themeTargets[themeKeyOf(q)] - themeCounts[themeKeyOf(q)]);
-    return pgRoom + thRoom + Math.random(); // ruido para no ser 100% determinista entre empates
+    return pgRoom + pdRoom + thRoom + Math.random();
   }
 
-  function pickStratified(candidates: any[], count: number): any[] {
+  // Requisito del PO (R1, caso/escenario): un caso siempre tiene varias preguntas
+  // asociadas, y al elegir un caso para el examen SIEMPRE se eligen TODAS sus
+  // preguntas -- nunca un subconjunto. Por eso la selección opera sobre "bloques"
+  // (un cluster completo = 1 bloque; un standalone = bloque de 1) desde el principio,
+  // no solo al ordenar al final (ese era exactamente el bug: antes se elegía pregunta
+  // a pregunta sin noción de cluster, así que un caso de 3 preguntas podía quedar con
+  // solo 1 o 2 elegidas si la cuota del bucket dominio+enfoque se llenaba antes).
+  function buildBlocks(items: any[]): any[][] {
+    const seen = new Set<string>();
+    const byCluster: Record<string, any[]> = {};
+    for (const it of items) if (it.cluster_id) (byCluster[it.cluster_id] ??= []).push(it);
+    const blocks: any[][] = [];
+    for (const it of items) {
+      if (it.cluster_id) {
+        if (seen.has(it.cluster_id)) continue;
+        seen.add(it.cluster_id);
+        blocks.push(byCluster[it.cluster_id]);
+      } else {
+        blocks.push([it]);
+      }
+    }
+    return blocks;
+  }
+
+  function pickStratifiedBlocks(blocks: any[][], targetItemCount: number): any[] {
     const picked: any[] = [];
-    const remaining = [...candidates];
-    for (let i = 0; i < count && remaining.length > 0; i++) {
-      remaining.sort((a, b) => stratifiedScore(b) - stratifiedScore(a));
-      const chosen = remaining.shift()!;
-      picked.push(chosen);
-      if (chosen.process_group && pgCounts[chosen.process_group] !== undefined) pgCounts[chosen.process_group]++;
-      themeCounts[themeKeyOf(chosen)]++;
+    const remaining = [...blocks];
+    let count = 0;
+    while (count < targetItemCount && remaining.length > 0) {
+      // La puntuación del bloque se basa en su primer ítem (los hijos de un mismo
+      // caso comparten contexto/escenario, así que comparten grupo de proceso).
+      remaining.sort((a, b) => stratifiedScore(b[0]) - stratifiedScore(a[0]));
+      const block = remaining.shift()!;
+      picked.push(...block);
+      count += block.length;
+      for (const item of block) {
+        if (item.process_group && pgCounts[item.process_group] !== undefined) pgCounts[item.process_group]++;
+        if (item.performance_domain && pdCounts[item.performance_domain] !== undefined) pdCounts[item.performance_domain]++;
+        themeCounts[themeKeyOf(item)]++;
+      }
     }
     return picked;
+  }
+
+  // Recorta al total objetivo sin partir nunca un cluster: si sobra, se quitan
+  // primero standalones sueltos por el final; si aun así sobra, se quita el ÚLTIMO
+  // bloque de cluster COMPLETO (nunca una parte de él).
+  function trimToTarget(items: any[], target: number): any[] {
+    const result = [...items];
+    while (result.length > target) {
+      const lastIdx = result.length - 1;
+      if (!result[lastIdx].cluster_id) {
+        result.pop();
+        continue;
+      }
+      const clusterId = result[lastIdx].cluster_id;
+      while (result.length > 0 && result[result.length - 1].cluster_id === clusterId) {
+        result.pop();
+      }
+    }
+    return result;
   }
 
   const result: any[] = [];
   for (const [domainCode, weight] of Object.entries(DOMAIN_WEIGHTS)) {
     const targetCount = Math.round(targetTotal * weight);
-    const domainPool = byDomain[domainCode] ?? [];
+    const domainItems = byDomain[domainCode] ?? [];
+    const domainBlocks = buildBlocks(domainItems);
     const predictiveTarget = Math.round(targetCount * PREDICTIVE_SHARE);
 
-    const predictivePool = shuffle(domainPool.filter((q) => q.approach === "predictive"));
-    const predictive = pickStratified(predictivePool, predictiveTarget);
+    const predictiveBlocks = shuffle(domainBlocks.filter((b) => b[0].approach === "predictive"));
+    const predictive = pickStratifiedBlocks(predictiveBlocks, predictiveTarget);
 
-    const agileHybridPool = shuffle(domainPool.filter((q) => q.approach !== "predictive"));
-    const agileHybrid = pickStratified(agileHybridPool, targetCount - predictive.length);
+    const agileHybridBlocks = shuffle(domainBlocks.filter((b) => b[0].approach !== "predictive"));
+    const agileHybrid = pickStratifiedBlocks(agileHybridBlocks, Math.max(0, targetCount - predictive.length));
 
     result.push(...groupClusters([...predictive, ...agileHybrid]));
   }
 
-  return result.slice(0, targetTotal);
+  return trimToTarget(result, targetTotal);
 }
-
 function selectDrill(pool: any[], count: number) {
   return groupClusters(shuffle(pool)).slice(0, count);
 }
