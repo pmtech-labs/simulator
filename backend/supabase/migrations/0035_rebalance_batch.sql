@@ -1,0 +1,25 @@
+-- =========================================================
+-- 0035: Lote de reequilibrio de formato (mc_single) tras el lote de casos
+--
+-- No requiere cambios de esquema. Documenta el lote de reequilibrio: tras el lote
+-- anterior (14 clusters de caso, ratio casos subio a 36% vs objetivo 20-25%), se
+-- generaron 112 preguntas mc_single mas (repartidas entre los 3 dominios ECO) para
+-- diluir el ratio de casos de vuelta al rango objetivo.
+--
+-- Encontrado durante la ejecucion: la funcion admin_generation_jobs choco con
+-- WORKER_RESOURCE_LIMIT (limite de computo/tiempo) en lotes de 20-25 items en
+-- algunas ejecuciones -- las llamadas fallidas SI habian insertado preguntas antes
+-- del corte (verificado: 14-16 de las ~20-25 solicitadas ya estaban en la tabla
+-- questions pese a que el job quedo en status='running' sin cerrar). Se corrigieron
+-- manualmente esos jobs a status='completed' con el conteo real, y se redujo el
+-- tamano de lote a 15 para el resto de llamadas, sin mas fallos de recursos.
+--
+-- Resultado final tras publicar: 297 preguntas publicadas (antes 185).
+--   - Casos/escenarios: 67/297 = 22.6% (objetivo 20-25% -- CONSEGUIDO)
+--   - Tipo test (mc_single+graphic_based): 211/297 = 71.0% (objetivo 60-70% --
+--     ligeramente por encima, aceptable)
+--   - Interactivas (matching+enhanced_matching+hotspot+pulldown): 19/297 = 6.4%
+--     (objetivo 10-15% -- por debajo, diluido por el crecimiento del resto del
+--     banco; siguiente paso lógico: generador dedicado de preguntas interactivas)
+-- =========================================================
+select 1; -- no-op, migración documental
