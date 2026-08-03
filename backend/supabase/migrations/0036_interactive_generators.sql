@@ -1,0 +1,32 @@
+-- =========================================================
+-- 0036: Generadores dedicados de matching y hotspot (IA solo aporta texto/etiquetas)
+--
+-- No requiere cambios de esquema. Documenta dos nuevas Edge Functions:
+--
+-- admin_generate_matching_question: la IA aporta pares término-definición en TEXTO
+-- puro (sin riesgo estructural); el CÓDIGO construye siempre el payload completo
+-- (ids, barajado del lado derecho, correctPairs) -- nunca se confía en que el
+-- modelo autoconstruya el emparejamiento.
+--
+-- admin_generate_hotspot_question: usa 2 PLANTILLAS DE DIAGRAMA FIJAS por código
+-- (rejilla 2x2 tipo poder/interés, línea temporal de 5 etapas tipo grupos de
+-- proceso) -- la IA solo aporta el escenario y las etiquetas de texto de cada zona,
+-- nunca las coordenadas ni el SVG.
+--
+-- Verificado con lotes de prueba reales: matching (4 pares) con emparejamiento
+-- verificado manualmente correcto y barajado real del lado derecho; hotspot (4
+-- preguntas, ambas plantillas) con las 4 verificadas manualmente correctas contra
+-- el escenario descrito (ej. "alta influencia/bajo interés" para un interesado
+-- descrito exactamente así).
+--
+-- Resultado tras publicar los lotes: 324 preguntas publicadas, con los 3 objetivos
+-- de formato del PO conseguidos SIMULTÁNEAMENTE:
+--   - Tipo test: 211/324 = 65.1% (objetivo 60-70%)
+--   - Casos/escenarios: 67/324 = 20.7% (objetivo 20-25%)
+--   - Interactivas: 46/324 = 14.2% (objetivo 10-15%)
+--
+-- Pendiente: enhanced_matching sigue siendo autoría manual por plantillas (como el
+-- ejemplo de estructuras organizativas) -- construir gráficos con sentido semántico
+-- real por código es más limitado que texto o diagramas geométricos genéricos.
+-- =========================================================
+select 1; -- no-op, migración documental
