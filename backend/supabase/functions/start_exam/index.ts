@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
 
   let query = admin
     .from("questions")
-    .select("id, item_type, format, cluster_id, task_id, approach, eco_tasks(domain_id, eco_domains(code))")
+    .select("id, item_type, format, cluster_id, task_id, approach, process_group, focus_tags, eco_tasks(domain_id, eco_domains(code))")
     .eq("status", "published");
 
   if (!includesPracticumFull) {
@@ -228,6 +228,13 @@ Deno.serve(async (req) => {
   });
 });
 
+// Requisito del PO (R1): además del reparto oficial por dominio (33/41/26) y enfoque
+// (40/60), equilibrar también por Área de Enfoque/grupo de proceso (20% cada uno) y
+// por Nueva Temática (50% entrega de valor / 10% sostenibilidad / 10% IA / 30% ninguna)
+// -- best-effort: dominio y enfoque son el requisito oficial del ECO 2026 y tienen
+// prioridad; grupo de proceso y temática se reparten dentro de lo que el banco permita
+// en cada momento (con un banco todavía pequeño, no siempre se podrá llegar al 20%/
+// 50% exactos, pero el reparto activo hace que se acerque en vez de quedar al azar).
 function selectFullSim(pool: any[]) {
   const targetTotal = FULL_SIM_TOTAL;
   const byDomain: Record<string, any[]> = { people: [], process: [], business_environment: [] };
@@ -237,17 +244,62 @@ function selectFullSim(pool: any[]) {
     if (domainCode && byDomain[domainCode]) byDomain[domainCode].push(q);
   }
 
+  const PROCESS_GROUPS = ["initiation", "planning", "execution", "monitoring_control", "closing"];
+  const pgTargets: Record<string, number> = {};
+  for (const pg of PROCESS_GROUPS) pgTargets[pg] = Math.round(targetTotal * 0.2);
+  const pgCounts: Record<string, number> = { initiation: 0, planning: 0, execution: 0, monitoring_control: 0, closing: 0 };
+
+  const themeTargets: Record<string, number> = {
+    entrega_valor: Math.round(targetTotal * 0.5),
+    sostenibilidad: Math.round(targetTotal * 0.1),
+    ia: Math.round(targetTotal * 0.1),
+    ninguna: targetTotal - Math.round(targetTotal * 0.5) - Math.round(targetTotal * 0.1) - Math.round(targetTotal * 0.1),
+  };
+  const themeCounts: Record<string, number> = { entrega_valor: 0, sostenibilidad: 0, ia: 0, ninguna: 0 };
+
+  function themeKeyOf(q: any): string {
+    const tags: string[] = q.focus_tags ?? [];
+    if (tags.includes("entrega_valor")) return "entrega_valor";
+    if (tags.includes("sostenibilidad")) return "sostenibilidad";
+    if (tags.includes("ia")) return "ia";
+    return "ninguna";
+  }
+
+  // Cuanto más "hueco" le quede a un candidato en su grupo de proceso/temática frente
+  // al objetivo, más prioridad recibe -- así el hueco se rellena activamente en vez de
+  // depender de que el azar puro lo consiga.
+  function stratifiedScore(q: any): number {
+    const pgRoom = q.process_group && pgCounts[q.process_group] !== undefined
+      ? Math.max(0, pgTargets[q.process_group] - pgCounts[q.process_group])
+      : 0;
+    const thRoom = Math.max(0, themeTargets[themeKeyOf(q)] - themeCounts[themeKeyOf(q)]);
+    return pgRoom + thRoom + Math.random(); // ruido para no ser 100% determinista entre empates
+  }
+
+  function pickStratified(candidates: any[], count: number): any[] {
+    const picked: any[] = [];
+    const remaining = [...candidates];
+    for (let i = 0; i < count && remaining.length > 0; i++) {
+      remaining.sort((a, b) => stratifiedScore(b) - stratifiedScore(a));
+      const chosen = remaining.shift()!;
+      picked.push(chosen);
+      if (chosen.process_group && pgCounts[chosen.process_group] !== undefined) pgCounts[chosen.process_group]++;
+      themeCounts[themeKeyOf(chosen)]++;
+    }
+    return picked;
+  }
+
   const result: any[] = [];
   for (const [domainCode, weight] of Object.entries(DOMAIN_WEIGHTS)) {
     const targetCount = Math.round(targetTotal * weight);
     const domainPool = byDomain[domainCode] ?? [];
     const predictiveTarget = Math.round(targetCount * PREDICTIVE_SHARE);
 
-    const predictive = shuffle(domainPool.filter((q) => q.approach === "predictive")).slice(0, predictiveTarget);
-    const agileHybrid = shuffle(domainPool.filter((q) => q.approach !== "predictive")).slice(
-      0,
-      targetCount - predictive.length,
-    );
+    const predictivePool = shuffle(domainPool.filter((q) => q.approach === "predictive"));
+    const predictive = pickStratified(predictivePool, predictiveTarget);
+
+    const agileHybridPool = shuffle(domainPool.filter((q) => q.approach !== "predictive"));
+    const agileHybrid = pickStratified(agileHybridPool, targetCount - predictive.length);
 
     result.push(...groupClusters([...predictive, ...agileHybrid]));
   }

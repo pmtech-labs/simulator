@@ -1,0 +1,19 @@
+-- =========================================================
+-- 0031: Documental -- equilibrado estratificado de full_sim por grupo de proceso y tematica
+--
+-- No requiere cambios de esquema (ya existian process_group y focus_tags de la
+-- migracion 0030). Este cambio es enteramente logica en start_exam/selectFullSim:
+-- ademas del reparto oficial por dominio (33/41/26) y enfoque (40/60), ahora tambien
+-- prioriza activamente candidatos que rellenen el hueco pendiente de grupo de proceso
+-- (20% cada uno) y tematica (50% valor / 10% sostenibilidad / 10% IA / 30% ninguna),
+-- en vez de una seleccion puramente aleatoria dentro de cada bucket dominio/enfoque.
+--
+-- Best-effort: dominio y enfoque son el requisito oficial del ECO 2026 y mantienen
+-- prioridad; grupo de proceso y tematica se reparten dentro de lo que el banco
+-- permita en cada momento.
+--
+-- Verificado con una prueba real de full_sim: el algoritmo corre correctamente (no
+-- falla), pero como las 67 preguntas PUBLICADAS son todas anteriores a este requisito
+-- (process_group = null en las 67), no hay todavia nada que equilibrar en produccion
+-- -- el efecto se vera en cuanto se publique contenido ya etiquetado (las 10 preguntas
+-- de prueba generadas con este campo siguen en draft, pendientes de revision).
