@@ -79,12 +79,27 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con est
 {"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":<entero 1-5 según se te indique, NUNCA un valor fijo por defecto>}`;
 }
 
-function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string, targetProcessGroup: string, targetThemes: Theme[], targetPerformanceDomain: string) {
+function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string, targetProcessGroup: string, targetThemes: Theme[], targetPerformanceDomain: string, targetMultiLetters: string[] | null) {
   const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
   const focusLine = focusTags.length > 0 ? `\nTemas transversales a entretejer si es natural: ${focusTags.join(", ")}` : "";
   const themeLine = targetThemes.length > 0
     ? `\n\nTEMÁTICA(S) (obligatorio, todas las indicadas): ${targetThemes.map((t) => THEME_INSTRUCTIONS[t]).join(" ")}`
     : "";
+  // Requisito del PO: mc_multi tiene una forma EXACTA obligatoria -- 5 opciones
+  // (A-E), de las cuales EXACTAMENTE 2 son correctas. Solo se considera acertada si
+  // el candidato marca las 2 correctas (no cuenta acertar solo una).
+  const answerPositionBlock = targetMultiLetters
+    ? `POSICIÓN DE LAS RESPUESTAS CORRECTAS (obligatorio, no lo cambies): debes generar EXACTAMENTE 5
+opciones (A, B, C, D, E). Las opciones correctas deben ser EXACTAMENTE "${targetMultiLetters[0]}" y
+"${targetMultiLetters[1]}" -- es decir, "correct_answer" debe ser exactamente ["${targetMultiLetters[0]}",
+"${targetMultiLetters[1]}"]. Las otras 3 opciones son distractores individuales, cada uno incorrecto por
+sí solo aunque pueda parecer razonable. Esta pregunta solo se considera acertada si el candidato marca
+las 2 opciones correctas, ninguna más y ninguna menos -- constrúyela así desde el principio.`
+    : `POSICIÓN DE LA RESPUESTA CORRECTA (obligatorio, no lo cambies): la opción correcta debe quedar en la
+posición "${targetLetter}". Es decir, "correct_answer" debe ser exactamente ["${targetLetter}"], y el
+resto de posiciones (A, B, C, D excluyendo "${targetLetter}") deben ser los distractores. Construye tu
+razonamiento y el orden de las opciones directamente para que esto sea cierto desde el principio —
+no generes la pregunta con la correcta en otra posición y la corrijas después.`;
   return `Dominio ECO: ${task.eco_domains.name}
 Tarea: ${task.title}
 Enablers de referencia:
@@ -95,11 +110,7 @@ Formato: ${format}${focusLine}${themeLine}
 
 Genera UNA pregunta de examen tipo PMP en español (neutro, España/LATAM), situacional, evaluando esta tarea.
 
-POSICIÓN DE LA RESPUESTA CORRECTA (obligatorio, no lo cambies): la opción correcta debe quedar en la
-posición "${targetLetter}". Es decir, "correct_answer" debe ser exactamente ["${targetLetter}"], y el
-resto de posiciones (A, B, C, D excluyendo "${targetLetter}") deben ser los distractores. Construye tu
-razonamiento y el orden de las opciones directamente para que esto sea cierto desde el principio —
-no generes la pregunta con la correcta en otra posición y la corrijas después.
+${answerPositionBlock}
 
 DIFICULTAD (obligatorio, no lo cambies): el campo "difficulty" de tu respuesta debe ser exactamente el
 número ${targetDifficulty} (escala 1-5, donde 1 es muy fácil y 5 es muy difícil). Construye el enunciado,
@@ -216,10 +227,26 @@ function repairUnescapedQuotes(text: string): string {
   return result;
 }
 
-function validateDraft(draft: any, targetLetter: string, targetDifficulty: number): string[] {
+function validateDraft(draft: any, targetLetter: string, targetDifficulty: number, targetMultiLetters: string[] | null): string[] {
   const issues: string[] = [];
   if (!draft.stem || draft.stem.length < 20) issues.push("Enunciado demasiado corto");
   if (!Array.isArray(draft.options) || draft.options.length < 2) issues.push("Menos de 2 opciones");
+  if (targetMultiLetters) {
+    // Requisito del PO: mc_multi exige EXACTAMENTE 5 opciones y EXACTAMENTE 2
+    // correctas, las 2 indicadas -- ni más ni menos, sin excepción.
+    if (!Array.isArray(draft.options) || draft.options.length !== 5) {
+      issues.push(`mc_multi debe tener exactamente 5 opciones (llegaron ${draft.options?.length ?? 0})`);
+    }
+    if (!Array.isArray(draft.correct_answer) || draft.correct_answer.length !== 2) {
+      issues.push(`mc_multi debe tener exactamente 2 respuestas correctas (llegaron ${draft.correct_answer?.length ?? 0})`);
+    } else {
+      const got = [...draft.correct_answer].sort();
+      const want = [...targetMultiLetters].sort();
+      if (got[0] !== want[0] || got[1] !== want[1]) {
+        issues.push(`Las respuestas correctas de mc_multi no coinciden con las solicitadas (pedidas: ${want.join(",")}, recibidas: ${got.join(",")})`);
+      }
+    }
+  }
   if (!Array.isArray(draft.correct_answer) || draft.correct_answer.length === 0) {
     issues.push("correct_answer vacío");
   } else if (Array.isArray(draft.options)) {
@@ -232,7 +259,7 @@ function validateDraft(draft: any, targetLetter: string, targetDifficulty: numbe
     // origen. Aquí solo se verifica que el modelo cumplió lo pedido; si no, se descarta
     // el ítem en vez de reordenar después (reordenar rompía las referencias a letras
     // dentro del texto libre de "explanation", que el modelo sí escribe en prosa).
-    if (!draft.correct_answer.includes(targetLetter)) {
+    if (!targetMultiLetters && !draft.correct_answer.includes(targetLetter)) {
       issues.push(`La respuesta correcta no quedó en la posición solicitada (${targetLetter})`);
     }
     for (const opt of draft.options) {
@@ -365,6 +392,13 @@ Deno.serve(async (req) => {
     // de la posición de la respuesta correcta a lo largo del lote (ver bug histórico:
     // el modelo copiaba literalmente el "B" del ejemplo del prompt casi siempre).
     const targetLetter = ["A", "B", "C", "D"][i % 4];
+    // Requisito del PO: mc_multi exige 5 opciones (A-E) con exactamente 2 correctas.
+    // Rotación por las 10 combinaciones posibles de 2 entre 5, para variar la posición.
+    const MC_MULTI_PAIRS = [
+      ["A", "B"], ["A", "C"], ["A", "D"], ["A", "E"], ["B", "C"],
+      ["B", "D"], ["B", "E"], ["C", "D"], ["C", "E"], ["D", "E"],
+    ];
+    const targetMultiLetters = format === "mc_multi" ? MC_MULTI_PAIRS[i % MC_MULTI_PAIRS.length] : null;
     // Dificultad objetivo aleatoria dentro del rango pedido, fijada ANTES de generar
     // (mismo motivo que targetLetter: el modelo copiaba literalmente el "3" de ejemplo
     // del prompt en vez de variar la dificultad — confirmado con datos reales: 44/44
@@ -399,7 +433,7 @@ Deno.serve(async (req) => {
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(task, approach, format, targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetThemes, targetPerformanceDomain),
+        buildUserPrompt(task, approach, format, targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetThemes, targetPerformanceDomain, targetMultiLetters),
       );
 
       const cleaned = result.text.replace(/```json|```/g, "").trim();
@@ -425,7 +459,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      const issues = validateDraft(draft, targetLetter, targetDifficulty);
+      const issues = validateDraft(draft, targetLetter, targetDifficulty, targetMultiLetters);
 
       if (issues.length > 0) {
         failed++;

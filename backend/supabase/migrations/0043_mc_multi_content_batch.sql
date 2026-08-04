@@ -1,0 +1,18 @@
+-- =========================================================
+-- 0043: Primer lote real de contenido mc_multi (hueco detectado en 0042)
+--
+-- La migracion 0042 detecto que R1-Formato exige 10% de "opcion multiple" (mc_multi:
+-- exactamente 5 opciones, elegir 2, solo correcta si aciertas las 2), pero el banco
+-- tenia 0 preguntas publicadas de ese formato -- el algoritmo redirigia ese hueco
+-- honestamente a mc_single en vez de dejar el examen corto.
+--
+-- Generados y publicados 23 preguntas mc_multi (2 lotes de 15, 11+12 exitosas tras
+-- validacion). Verificado con SQL antes de publicar: 23/23 con exactamente 5
+-- opciones y exactamente 2 respuestas correctas. Verificado con full_sim real
+-- desplegado: mc_multi ya aparece en el examen (13/180 en la prueba).
+--
+-- Pendiente: seguir aumentando volumen de mc_multi -- 23 preguntas repartidas entre
+-- 3 dominios sigue siendo poco para acercarse de forma consistente al 10% exacto
+-- en cada simulacro.
+-- =========================================================
+select 1; -- no-op, migración documental
