@@ -1,0 +1,31 @@
+-- =========================================================
+-- 0049: Corregido un desajuste real de datos + reforzado el prompt de reclasificación
+--
+-- El usuario reportó que en el banco de preguntas no veía etiquetas de Formato ni
+-- de Temática. Investigado y encontradas DOS causas distintas:
+--
+-- 1. Formato (FO): 476/476 preguntas SÍ tienen la etiqueta correcta en BD -- era
+--    puramente un problema de frontend (nunca mostraba esta dimensión, no existía
+--    equivalente en el modelo antiguo). Ver prompt de Lovable 32 para el fix.
+--
+-- 2. Nueva Temática (NT): encontrado un desajuste de datos REAL, no solo visual.
+--    162 preguntas se habían generado deliberadamente con una temática concreta
+--    (columna antigua questions.focus_tags, fijada en el momento de generar), pero
+--    la reclasificación por IA (reclassify_question_tags) las etiquetó con NTRE en
+--    vez de la temática real, porque el prompt de clasificación no recibía ninguna
+--    pista sobre qué temática se había integrado deliberadamente al generar (a
+--    diferencia de área de enfoque/dominio de desempeño, que sí recibían pista del
+--    valor anterior de una sola etiqueta).
+--
+-- Corregido:
+-- - Backfill puntual: las 162 preguntas afectadas corregidas usando su
+--   questions.focus_tags original (fuente de verdad real, no reclasificado por IA).
+-- - reclassify_question_tags: el prompt ahora también recibe como pista qué
+--   temática se integró deliberadamente al generar (mismo patrón que ya se usaba
+--   para área de enfoque/dominio de desempeño), para que futuras reclasificaciones
+--   no repitan este error.
+--
+-- Verificado tras el fix: 0 desajustes restantes, 476/476 preguntas con NT
+-- correcta, 476/476 con Formato correcto.
+-- =========================================================
+select 1; -- no-op, migración documental

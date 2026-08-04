@@ -55,10 +55,18 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:
 }`;
 }
 
-function buildUserPrompt(stem: string, previousAreaHint?: string, previousDomainHint?: string, payloadContent?: string): string {
+function buildUserPrompt(stem: string, previousAreaHint?: string, previousDomainHint?: string, payloadContent?: string, previousThemeHint?: string[]): string {
   const hints = [];
   if (previousAreaHint) hints.push(`Clasificación anterior (de un sistema más simple, de un solo valor) de área de enfoque: ${previousAreaHint} -- verifícala y amplíala si de verdad toca más de una etapa, no la copies ciegamente.`);
   if (previousDomainHint) hints.push(`Clasificación anterior de dominio de desempeño: ${previousDomainHint} -- verifícala y amplíala si de verdad toca más de un dominio, no la copies ciegamente.`);
+  // BUG encontrado y corregido: sin esta pista, el modelo a veces no detectaba una
+  // temática que SÍ estaba deliberadamente integrada en el enunciado al generarlo
+  // (162 preguntas reales quedaron con NTRE en vez de su temática real la primera
+  // vez que se ejecutó esto) -- ahora se le dice explícitamente qué temática se
+  // pretendía al generar, para que la verifique en el texto en vez de adivinar.
+  if (previousThemeHint && previousThemeHint.length > 0) {
+    hints.push(`Al generar esta pregunta se integró deliberadamente esta temática: ${previousThemeHint.join(", ")} -- confirma en el texto que sigue presente (normalmente lo estará) y decláralo en nuevas_tematicas.`);
+  }
   const hintLine = hints.length > 0 ? `\n\n${hints.join("\n")}` : "";
   // Requisito: en formatos como "matching", el enunciado (stem) es solo una instrucción
   // genérica ("Empareja cada concepto con su definición") -- el contenido real está en
@@ -134,7 +142,7 @@ Deno.serve(async (req) => {
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(q.stem, areaHint, domainHint, payloadContent),
+        buildUserPrompt(q.stem, areaHint, domainHint, payloadContent, q.focus_tags),
         500,
       );
 
