@@ -19,6 +19,14 @@ interface CreateMatchingBody {
 }
 
 const PROCESS_GROUPS = ["initiation", "planning", "execution", "monitoring_control", "closing"] as const;
+// Actualización del PO: Áreas de Enfoque pasan de 20/20/20/20/20 a 10/30/20/30/10.
+const WEIGHTED_PROCESS_GROUPS = [
+  "initiation",
+  "planning", "planning", "planning",
+  "execution", "execution",
+  "monitoring_control", "monitoring_control", "monitoring_control",
+  "closing",
+] as const;
 const PERFORMANCE_DOMAINS = ["gobernanza", "alcance", "cronograma", "finanzas", "recursos", "riesgos", "interesados"] as const;
 type Theme = "entrega_valor" | "sostenibilidad" | "ia";
 function pickThemes(): Theme[] {
@@ -130,7 +138,7 @@ Deno.serve(async (req) => {
   for (let i = 0; i < body.count_requested; i++) {
     const taskId = body.task_ids[i % body.task_ids.length];
     const pairsCount = body.pairs_per_question ?? (4 + Math.floor(Math.random() * 3)); // 4-6
-    const targetProcessGroup = PROCESS_GROUPS[i % PROCESS_GROUPS.length];
+    const targetProcessGroup = WEIGHTED_PROCESS_GROUPS[i % WEIGHTED_PROCESS_GROUPS.length];
     const targetPerformanceDomain = PERFORMANCE_DOMAINS[i % PERFORMANCE_DOMAINS.length];
     const targetThemes = pickThemes();
 

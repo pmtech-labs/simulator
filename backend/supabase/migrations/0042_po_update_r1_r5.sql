@@ -1,0 +1,37 @@
+-- =========================================================
+-- 0042: Actualización de requisitos del PO -- R1 (Áreas de Enfoque + Formato) y R5
+-- (bloques de 60)
+--
+-- R1 - Áreas de Enfoque: cambia de 20/20/20/20/20 a 10% Inicio / 30% Planificación /
+-- 20% Ejecución / 30% Monitoreo y Control / 10% Cierre. Actualizado en los 4
+-- generadores (rotación ponderada de 10 posiciones en vez de simple i%5) y en
+-- start_exam (pgTargets).
+--
+-- R1 - Formato: cambia de 60-70% test / 20-25% casos / 10-15% interactivas (4
+-- subtipos) a 60% opción única / 10% opción múltiple / 20% casos / 10% interactivas
+-- (ahora 5 subtipos, incluyendo "preguntas basadas en gráficos" que antes iba
+-- aparte). selectFullSim ahora trata el formato como división DURA por dominio
+-- (no como prioridad blanda que compite con otras dimensiones) -- ver comentario en
+-- el código: la primera versión probada localmente con datos reales daba mc_single
+-- muy sobrerrepresentado (68% en vez de 60%) porque competía con casos/interactivas
+-- por una puntuación con magnitudes desiguales; la versión final (formato como
+-- split explícito con sub-cuota por dominio) corrige esto.
+--
+-- Hueco de contenido real detectado: 0 preguntas mc_multi publicadas (formato
+-- nuevo, opción múltiple exacta 5 opciones/2 correctas). El algoritmo redirige
+-- honestamente ese hueco a mc_single en vez de dejar el examen corto -- pendiente
+-- generar contenido real de mc_multi (siguiente paso).
+--
+-- R5: examen completo ahora se divide en 3 bloques de EXACTAMENTE 60 preguntas
+-- (antes: bloque 1 = todos los casos con tamaño variable, bloques 2-3 = resto
+-- partido por la mitad). Todos los casos van al bloque 1; el resto se completa
+-- hasta 60 con las demás preguntas, y los bloques 2 y 3 se llenan con lo que
+-- sobra. R6 (temporizador y descansos) se mantiene sin cambios, tal como pidió
+-- el PO explícitamente (documentado en el ECO 2026 real).
+--
+-- Verificado con datos reales antes de desplegar (script local replicate3.js
+-- contra el pool completo de 324 preguntas) y con una llamada real a start_exam
+-- ya desplegado: 180/180 preguntas, 3 bloques de exactamente 60/60/60, todos los
+-- case_child confirmados en la sección 1 (44 en este caso, 0 en secciones 2 y 3).
+-- =========================================================
+select 1; -- no-op, migración documental

@@ -122,6 +122,16 @@ const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "a
 // Requisito del PO: "Áreas de Enfoque" (grupos de proceso clásicos), objetivo 20% cada
 // uno en el simulacro completo.
 const PROCESS_GROUPS = ["initiation", "planning", "execution", "monitoring_control", "closing"] as const;
+// Actualización del PO: Áreas de Enfoque pasan de 20/20/20/20/20 a 10/30/20/30/10.
+// Rotación ponderada (10 slots) en vez de simple i%5, para garantizar la proporción
+// exacta en cualquier lote múltiplo de 10 y aproximarla bien en lotes más pequeños.
+const WEIGHTED_PROCESS_GROUPS = [
+  "initiation",
+  "planning", "planning", "planning",
+  "execution", "execution",
+  "monitoring_control", "monitoring_control", "monitoring_control",
+  "closing",
+] as const;
 const PROCESS_GROUP_LABELS: Record<string, string> = {
   initiation: "Inicio",
   planning: "Planificación",
@@ -365,7 +375,7 @@ Deno.serve(async (req) => {
 
     // Área de enfoque (grupo de proceso): rotación determinista para garantizar el
     // 20% exacto de cada uno en el lote, en vez de fiarse de que el modelo lo varíe.
-    const targetProcessGroup = PROCESS_GROUPS[i % PROCESS_GROUPS.length];
+    const targetProcessGroup = WEIGHTED_PROCESS_GROUPS[i % WEIGHTED_PROCESS_GROUPS.length];
 
     // Dominio de desempeño: rotación determinista (~14-15% cada uno de los 7),
     // etiqueta independiente de la tarea ECO (aclarado por el PO).

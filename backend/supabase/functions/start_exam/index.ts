@@ -256,12 +256,17 @@ function selectFullSim(pool: any[]) {
     if (domainCode && byDomain[domainCode]) byDomain[domainCode].push(q);
   }
 
-  const PROCESS_GROUPS = ["initiation", "planning", "execution", "monitoring_control", "closing"];
-  const pgTargets: Record<string, number> = {};
-  for (const pg of PROCESS_GROUPS) pgTargets[pg] = Math.round(targetTotal * 0.2);
+  // Actualización del PO: Áreas de Enfoque pasan de 20/20/20/20/20 a 10/30/20/30/10.
+  const pgTargets: Record<string, number> = {
+    initiation: Math.round(targetTotal * 0.1),
+    planning: Math.round(targetTotal * 0.3),
+    execution: Math.round(targetTotal * 0.2),
+    monitoring_control: Math.round(targetTotal * 0.3),
+    closing: Math.round(targetTotal * 0.1),
+  };
   const pgCounts: Record<string, number> = { initiation: 0, planning: 0, execution: 0, monitoring_control: 0, closing: 0 };
 
-  // Requisito del PO: "Dominios de Desempeño", ~14-15% cada uno de los 7.
+  // Requisito del PO: "Dominios de Desempeño", ~14-15% cada uno de los 7. Sin cambios.
   const PERFORMANCE_DOMAINS = ["gobernanza", "alcance", "cronograma", "finanzas", "recursos", "riesgos", "interesados"];
   const pdTargets: Record<string, number> = {
     gobernanza: Math.round(targetTotal * 0.15), alcance: Math.round(targetTotal * 0.14),
@@ -271,9 +276,6 @@ function selectFullSim(pool: any[]) {
   };
   const pdCounts: Record<string, number> = Object.fromEntries(PERFORMANCE_DOMAINS.map((d) => [d, 0]));
 
-  // Requisito del PO: las temáticas NO son excluyentes -- una pregunta puede llevar
-  // varias a la vez. Se trackea cada una de forma independiente (no como un reparto
-  // que sume 100%), más un contador aparte de "sin ninguna temática".
   const themeTargets: Record<string, number> = {
     entrega_valor: Math.round(targetTotal * 0.5),
     sostenibilidad: Math.round(targetTotal * 0.1),
@@ -287,8 +289,17 @@ function selectFullSim(pool: any[]) {
     return q.focus_tags ?? [];
   }
 
-  // Cuanto más "hueco" le quede a un candidato en grupo de proceso / dominio de
-  // desempeño / temática frente al objetivo, más prioridad recibe.
+  // Requisito del PO: bucket de formato al que pertenece cada pregunta -- "caso" se
+  // trata aparte (todas van al bloque 1, ver assignBlocksOfSixty); mc_single, mc_multi
+  // e interactivas (matching/enhanced_matching/hotspot/pulldown/graphic_based) son las
+  // 3 categorías con cuota propia dentro del resto.
+  function formatKeyOf(q: any): string {
+    if (q.item_type === "case_child") return "caso";
+    if (q.format === "mc_single") return "mc_single";
+    if (q.format === "mc_multi") return "mc_multi";
+    return "interactivas";
+  }
+
   function stratifiedScore(q: any): number {
     const pgRoom = q.process_group && pgCounts[q.process_group] !== undefined
       ? Math.max(0, pgTargets[q.process_group] - pgCounts[q.process_group])
@@ -303,13 +314,6 @@ function selectFullSim(pool: any[]) {
     return pgRoom + pdRoom + thRoom + Math.random();
   }
 
-  // Requisito del PO (R1, caso/escenario): un caso siempre tiene varias preguntas
-  // asociadas, y al elegir un caso para el examen SIEMPRE se eligen TODAS sus
-  // preguntas -- nunca un subconjunto. Por eso la selección opera sobre "bloques"
-  // (un cluster completo = 1 bloque; un standalone = bloque de 1) desde el principio,
-  // no solo al ordenar al final (ese era exactamente el bug: antes se elegía pregunta
-  // a pregunta sin noción de cluster, así que un caso de 3 preguntas podía quedar con
-  // solo 1 o 2 elegidas si la cuota del bucket dominio+enfoque se llenaba antes).
   function buildBlocks(items: any[]): any[][] {
     const seen = new Set<string>();
     const byCluster: Record<string, any[]> = {};
@@ -332,8 +336,6 @@ function selectFullSim(pool: any[]) {
     const remaining = [...blocks];
     let count = 0;
     while (count < targetItemCount && remaining.length > 0) {
-      // La puntuación del bloque se basa en su primer ítem (los hijos de un mismo
-      // caso comparten contexto/escenario, así que comparten grupo de proceso).
       remaining.sort((a, b) => stratifiedScore(b[0]) - stratifiedScore(a[0]));
       const block = remaining.shift()!;
       picked.push(...block);
@@ -352,14 +354,20 @@ function selectFullSim(pool: any[]) {
     return picked;
   }
 
-  // Recorta al total objetivo sin partir nunca un cluster. BUG encontrado (Lovable
-  // reportó 176-178 preguntas en vez de 180 exactas, con banco de sobra disponible):
-  // la versión anterior, al toparse con un cluster en la última posición, borraba el
-  // CLUSTER ENTERO de golpe aunque solo sobraran unas pocas preguntas -- si ese cluster
-  // tenía 5-6 hijas, el resultado final se quedaba varias preguntas por debajo de 180.
-  // Ahora se recortan primero preguntas SUELTAS (estén donde estén en el resultado, no
-  // solo al final), y solo si no queda ninguna suelta se recorre a quitar un cluster
-  // completo -- verificado con datos reales del banco: 180/180 exactas en 6 pruebas.
+  // Elige `target` preguntas de un formato concreto DENTRO de un dominio, repartiendo
+  // también por enfoque 40/60 dentro de ese formato (antes el enfoque se repartía a
+  // nivel de dominio entero; ahora se anida dentro de cada bucket de formato).
+  function pickFormatBucket(domainNonCaseItems: any[], formatKey: string, target: number): any[] {
+    const bucketPool = domainNonCaseItems.filter((q) => formatKeyOf(q) === formatKey);
+    const predictiveTarget = Math.round(target * PREDICTIVE_SHARE);
+    const predictiveBlocks = shuffle(buildBlocks(bucketPool.filter((q) => q.approach === "predictive")));
+    const predictive = pickStratifiedBlocks(predictiveBlocks, predictiveTarget);
+    const agileHybridBlocks = shuffle(buildBlocks(bucketPool.filter((q) => q.approach !== "predictive")));
+    const agileHybrid = pickStratifiedBlocks(agileHybridBlocks, Math.max(0, target - predictive.length));
+    return [...predictive, ...agileHybrid];
+  }
+
+  // Recorta al total objetivo sin partir nunca un cluster (ver migración 0041).
   function trimToTarget(items: any[], target: number): any[] {
     let result = [...items];
     if (result.length <= target) return result;
@@ -374,25 +382,83 @@ function selectFullSim(pool: any[]) {
     return result;
   }
 
+  // Requisito del PO: Formato pasa de 60-70% test / 20-25% casos / 10-15% interactivas
+  // a 60% opción única / 10% opción múltiple / 20% casos / 10% interactivas.
+  const casoTarget = Math.round(targetTotal * 0.2);
+  const FORMAT_SHARE_OF_NONCASO = { mc_single: 0.75, mc_multi: 0.125, interactivas: 0.125 }; // 60/10/10 relativo al 80% no-caso
+
   const result: any[] = [];
   for (const [domainCode, weight] of Object.entries(DOMAIN_WEIGHTS)) {
     const targetCount = Math.round(targetTotal * weight);
     const domainItems = byDomain[domainCode] ?? [];
-    const domainBlocks = buildBlocks(domainItems);
-    const predictiveTarget = Math.round(targetCount * PREDICTIVE_SHARE);
+    const domainCasoTarget = Math.round(casoTarget * weight);
 
-    const predictiveBlocks = shuffle(domainBlocks.filter((b) => b[0].approach === "predictive"));
-    const predictive = pickStratifiedBlocks(predictiveBlocks, predictiveTarget);
+    const casoBlocksAll = buildBlocks(domainItems.filter((q) => q.item_type === "case_child"));
+    const casoPicked = pickStratifiedBlocks(shuffle(casoBlocksAll), domainCasoTarget);
 
-    const agileHybridBlocks = shuffle(domainBlocks.filter((b) => b[0].approach !== "predictive"));
-    const agileHybrid = pickStratifiedBlocks(agileHybridBlocks, Math.max(0, targetCount - predictive.length));
+    const nonCaseItems = domainItems.filter((q) => q.item_type !== "case_child");
+    const remaining = Math.max(0, targetCount - casoPicked.length);
 
-    result.push(...groupClusters([...predictive, ...agileHybrid]));
+    let mcSingleTarget = Math.round(remaining * FORMAT_SHARE_OF_NONCASO.mc_single);
+    const mcMultiTarget = Math.round(remaining * FORMAT_SHARE_OF_NONCASO.mc_multi);
+    const interactivasTarget = Math.max(0, remaining - mcSingleTarget - mcMultiTarget);
+
+    const mcMultiPicked = pickFormatBucket(nonCaseItems, "mc_multi", mcMultiTarget);
+    const interactivasPicked = pickFormatBucket(nonCaseItems, "interactivas", interactivasTarget);
+    // Lo que no se cubra de mc_multi/interactivas por falta de banco se redirige a
+    // mc_single (formato base) -- así el examen no se queda corto de preguntas por un
+    // hueco de contenido en un formato todavía minoritario en el banco.
+    const shortfall = (mcMultiTarget - mcMultiPicked.length) + (interactivasTarget - interactivasPicked.length);
+    mcSingleTarget += Math.max(0, shortfall);
+    const mcSinglePicked = pickFormatBucket(nonCaseItems, "mc_single", mcSingleTarget);
+
+    result.push(...groupClusters([...casoPicked, ...mcSinglePicked, ...mcMultiPicked, ...interactivasPicked]));
   }
 
   return trimToTarget(result, targetTotal);
 }
-function selectDrill(pool: any[], count: number) {
+
+// Requisito del PO (R5): un examen completo se divide en 3 bloques de EXACTAMENTE 60
+// preguntas cada uno. TODAS las preguntas de tipo caso/escenario van en el bloque 1;
+// el resto del bloque 1 y los bloques 2 y 3 se completan con el resto de tipos.
+function toBlocksAtomic(items: any[]): any[][] {
+  const blocks: any[][] = [];
+  let i = 0;
+  while (i < items.length) {
+    const item = items[i];
+    if (item.cluster_id) {
+      const block = [item];
+      let j = i + 1;
+      while (j < items.length && items[j].cluster_id === item.cluster_id) {
+        block.push(items[j]);
+        j++;
+      }
+      blocks.push(block);
+      i = j;
+    } else {
+      blocks.push([item]);
+      i++;
+    }
+  }
+  return blocks;
+}
+
+function assignBlocksOfSixty(items: any[]): any[][] {
+  const blocks = toBlocksAtomic(items);
+  const caseBlocks = blocks.filter((b) => b[0].cluster_id);
+  const nonCaseBlocks = blocks.filter((b) => !b[0].cluster_id);
+
+  const caseItems = caseBlocks.flat();
+  const nonCaseItems = shuffle(nonCaseBlocks.flat());
+
+  const fillNeeded = Math.max(0, 60 - caseItems.length);
+  const block1Filler = nonCaseItems.slice(0, fillNeeded);
+  const rest = nonCaseItems.slice(fillNeeded);
+  const block2 = rest.slice(0, 60);
+  const block3 = rest.slice(60, 120);
+
+  return [[...caseItems, ...block1Filler], block2, block3];
+}function selectDrill(pool: any[], count: number) {
   return groupClusters(shuffle(pool)).slice(0, count);
 }
 
@@ -422,52 +488,12 @@ function groupClusters(items: any[]) {
   return ordered;
 }
 
-// Convierte la lista ordenada en "bloques" (un cluster completo = 1 bloque; un standalone = bloque de 1)
-// para poder repartir en secciones sin partir nunca un cluster.
-function toBlocks(items: any[]): any[][] {
-  const blocks: any[][] = [];
-  let i = 0;
-  while (i < items.length) {
-    const item = items[i];
-    if (item.cluster_id) {
-      const block = [item];
-      let j = i + 1;
-      while (j < items.length && items[j].cluster_id === item.cluster_id) {
-        block.push(items[j]);
-        j++;
-      }
-      blocks.push(block);
-      i = j;
-    } else {
-      blocks.push([item]);
-      i++;
-    }
-  }
-  return blocks;
-}
-
-// Estructura REAL del examen (ECO 2026, "Información sobre el examen de certificación de PMP"):
-// "El primer descanso se toma después de la sección de estudio de casos, y el segundo descanso
-// se toma aproximadamente a mitad de la parte de preguntas independientes del examen."
-// Sección 1 = TODOS los clusters de caso (agrupados). Secciones 2 y 3 = las preguntas
-// independientes (standalone), partidas por la mitad. No son 3 bloques genéricos de ~60.
-function distributeBlocks(items: any[], _sectionCount: number): any[][] {
-  const blocks = toBlocks(items);
-  const caseBlocks = blocks.filter((b) => b[0].cluster_id);
-  const standaloneBlocks = blocks.filter((b) => !b[0].cluster_id);
-
-  const section1 = caseBlocks.flat();
-
-  const standaloneItems = standaloneBlocks.flat();
-  const midpoint = Math.ceil(standaloneItems.length / 2);
-  const section2 = standaloneItems.slice(0, midpoint);
-  const section3 = standaloneItems.slice(midpoint);
-
-  return [section1, section2, section3];
-}
-
+// Estructura REAL del examen (ECO 2026, actualización del PO R5): 3 bloques de
+// EXACTAMENTE 60 preguntas, con todos los casos en el bloque 1 (ver
+// assignBlocksOfSixty más arriba, junto a selectFullSim). El descanso sigue
+// tomándose entre bloques, tal como documenta el ECO 2026 real (sin cambios en R6).
 function assignSections(items: any[], sectionCount: number, totalSeconds: number) {
-  const sections = distributeBlocks(items, sectionCount);
+  const sections = assignBlocksOfSixty(items);
   const withSection: any[] = [];
   sections.forEach((sectionItems, idx) => {
     for (const item of sectionItems) withSection.push({ ...item, section_number: idx + 1 });

@@ -39,6 +39,14 @@ const FORBIDDEN_PATTERNS = [
 ];
 
 const PROCESS_GROUPS = ["initiation", "planning", "execution", "monitoring_control", "closing"] as const;
+// Actualización del PO: Áreas de Enfoque pasan de 20/20/20/20/20 a 10/30/20/30/10.
+const WEIGHTED_PROCESS_GROUPS = [
+  "initiation",
+  "planning", "planning", "planning",
+  "execution", "execution",
+  "monitoring_control", "monitoring_control", "monitoring_control",
+  "closing",
+] as const;
 const PROCESS_GROUP_LABELS: Record<string, string> = {
   initiation: "Inicio", planning: "Planificación", execution: "Ejecución",
   monitoring_control: "Monitoreo y Control", closing: "Cierre",
@@ -231,7 +239,7 @@ Deno.serve(async (req) => {
     const questionsCount = body.questions_per_cluster ?? (3 + Math.floor(Math.random() * 3)); // 3-5
     const targetLetters = Array.from({ length: questionsCount }, (_, idx) => ["A", "B", "C", "D"][(c + idx) % 4]);
     const targetDifficulties = Array.from({ length: questionsCount }, () => Math.floor(Math.random() * (diffMax - diffMin + 1)) + diffMin);
-    const targetProcessGroup = PROCESS_GROUPS[c % PROCESS_GROUPS.length];
+    const targetProcessGroup = WEIGHTED_PROCESS_GROUPS[c % WEIGHTED_PROCESS_GROUPS.length];
     const targetPerformanceDomain = PERFORMANCE_DOMAINS[c % PERFORMANCE_DOMAINS.length];
     const targetThemes = pickThemes();
 
