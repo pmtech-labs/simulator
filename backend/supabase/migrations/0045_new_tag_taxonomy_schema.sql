@@ -1,0 +1,57 @@
+-- =========================================================
+-- 0045: Nueva taxonomía de etiquetas del PO (Excel Etiquetas_preguntas_simulador_PMP)
+-- -- esquema + reclasificación completa del banco + start_exam adaptado
+--
+-- Nueva tabla question_tags (junction table) + question_tag_defs (catálogo), con los
+-- códigos EXACTOS del Excel del PO:
+--   DO (Dominio): DOPE/DOPR/DOEN -- excluyente
+--   CI (Ciclo de vida): CIPR/CIAH -- excluyente (ágil e híbrido se funden en CIAH,
+--     cambio real: antes teníamos 3 valores de approach, ahora la etiqueta es 1 de 2)
+--   AE (Área de Enfoque): AEIN/AEPL/AEEJ/AEMC/AECI -- NO excluyente (una pregunta
+--     puede tocar varias etapas a la vez, cambio real respecto al process_group
+--     anterior de un solo valor)
+--   DD (Dominio de Desempeño): DDGO/DDAL/DDCR/DDFI/DDRE/DDRI/DDIN -- NO excluyente
+--     (mismo cambio que AE, respecto a performance_domain anterior)
+--   FO (Formato): FOTU/FOTM/FOCE/FOIN -- excluyente (categoría más amplia que
+--     questions.format; FOIN agrupa matching/enhanced_matching/hotspot/pulldown/
+--     graphic_based)
+--   NT (Nueva Temática): NTEV/NTSO/NTIA -- NO excluyente (sin cambios respecto a
+--     focus_tags, solo recodificado)
+--
+-- Trigger check_exclusive_tag_type refuerza a nivel de BD que DO/CI/FO nunca tengan
+-- más de 1 etiqueta por pregunta.
+--
+-- Reclasificación completa del banco (462 preguntas, publicadas + borrador):
+-- - DO/CI/FO: migrados por SQL determinista (derivados de dominio de la tarea,
+--   approach, y item_type/format -- sin ambigüedad, sin necesidad de IA).
+-- - AE/DD: reevaluados por IA (Edge Function reclassify_question_tags) leyendo el
+--   contenido REAL de cada pregunta, porque ahora admiten varias etiquetas y no
+--   basta con migrar el valor antiguo de una sola etiqueta. 462/462 completadas.
+--   Encontrado y corregido en el camino: 4 preguntas de formato "matching" no se
+--   podían clasificar porque su `stem` es solo una instrucción genérica -- el
+--   contenido real vive en `practicum_payload`, que se incorporó al prompt.
+-- - NT: 43/462 preguntas existentes llevan alguna temática (9,3%) -- muy por debajo
+--   del ~70% que implicaría el R1, porque la mayoría del banco existente se generó
+--   antes de que el sistema de temáticas con probabilidades independientes existiera.
+--   Contenido nuevo sí las aplicará correctamente.
+--
+-- start_exam (selectSim) reescrito para leer AE/DD desde question_tags (multi-valor)
+-- en vez de las columnas antiguas de un solo valor -- stratifiedScore y el
+-- incremento de contadores en pickStratifiedBlocks ahora suman "room" a través de
+-- TODAS las etiquetas de cada pregunta, con el mismo patrón que ya se usaba para
+-- las temáticas (no excluyentes desde el principio).
+--
+-- Corrección adicional pedida por el PO: en medio examen (half_sim) los casos
+-- salían repartidos en varios bloques separados (uno por cada dominio, por cómo
+-- selectSim los intercala internamente) en vez de un único bloque consolidado como
+-- en el examen completo. Nueva función consolidateCasesFirst agrupa TODOS los casos
+-- al principio (contiguos) para cualquier modo sin la estructura de 3 bloques de R5.
+--
+-- Verificado con datos reales:
+-- - Réplica local (replicate4.js) contra el pool completo + question_tags real:
+--   medio examen (90) con los 22-25 casos siempre contiguos desde la posición 0.
+-- - Llamada real a start_exam: half_sim 90/90, casos contiguos posiciones 0-24,
+--   question_tags presente y multi-valor en cada ítem. full_sim 180/180, 60/60/60,
+--   secciones en orden.
+-- =========================================================
+select 1; -- no-op, migración documental

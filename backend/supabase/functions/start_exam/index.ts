@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
 
   let query = admin
     .from("questions")
-    .select("id, item_type, format, cluster_id, task_id, approach, process_group, performance_domain, focus_tags, eco_tasks(domain_id, eco_domains(code))")
+    .select("id, item_type, format, cluster_id, task_id, approach, process_group, performance_domain, focus_tags, question_tags(tag_code), eco_tasks(domain_id, eco_domains(code))")
     .eq("status", "published");
 
   if (!includesPracticumFull) {
@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
 
   const { data: renderable } = await admin
     .from("questions")
-    .select("id, item_type, format, cluster_id, stem, options, difficulty, process_group, performance_domain, focus_tags, practicum_payload, case_clusters(id, title, scenario_text, media)")
+    .select("id, item_type, format, cluster_id, stem, options, difficulty, process_group, performance_domain, focus_tags, practicum_payload, question_tags(tag_code), case_clusters(id, title, scenario_text, media)")
     .in("id", selected.map((q) => q.id));
 
   // BUG encontrado (numeración de preguntas descolocada, ej. "1, 8, 9, 10, 11..." en
@@ -327,6 +327,33 @@ function selectSim(pool: any[], targetTotal: number) {
     return q.focus_tags ?? [];
   }
 
+  // Requisito del PO (taxonomía Excel "Etiquetas_preguntas_simulador_PMP"): Área de
+  // Enfoque y Dominio de Desempeño NO son excluyentes -- una pregunta puede llevar
+  // VARIAS etiquetas del mismo tipo (ver question_tags, reclasificación completa del
+  // banco). Se extraen aquí desde el recurso embebido question_tags(tag_code) y se
+  // traducen de código (AEIN/DDGO/...) a la clave interna (initiation/gobernanza/...)
+  // que ya usan pgTargets/pdTargets, para no tener que renombrar todo el resto del
+  // algoritmo.
+  const AE_CODE_TO_KEY: Record<string, string> = {
+    AEIN: "initiation", AEPL: "planning", AEEJ: "execution", AEMC: "monitoring_control", AECI: "closing",
+  };
+  const DD_CODE_TO_KEY: Record<string, string> = {
+    DDGO: "gobernanza", DDAL: "alcance", DDCR: "cronograma", DDFI: "finanzas",
+    DDRE: "recursos", DDRI: "riesgos", DDIN: "interesados",
+  };
+  function aeKeysOf(q: any): string[] {
+    const codes: string[] = (q.question_tags ?? []).map((t: any) => t.tag_code).filter((c: string) => c?.startsWith("AE"));
+    if (codes.length > 0) return codes.map((c) => AE_CODE_TO_KEY[c]).filter(Boolean);
+    // Fallback para contenido que aún no pasó por la reclasificación (no debería
+    // ocurrir tras la reclasificación completa del banco, pero por seguridad).
+    return q.process_group ? [q.process_group] : [];
+  }
+  function ddKeysOf(q: any): string[] {
+    const codes: string[] = (q.question_tags ?? []).map((t: any) => t.tag_code).filter((c: string) => c?.startsWith("DD"));
+    if (codes.length > 0) return codes.map((c) => DD_CODE_TO_KEY[c]).filter(Boolean);
+    return q.performance_domain ? [q.performance_domain] : [];
+  }
+
   // Requisito del PO: bucket de formato al que pertenece cada pregunta -- "caso" se
   // trata aparte (todas van al bloque 1, ver assignBlocksOfSixty); mc_single, mc_multi
   // e interactivas (matching/enhanced_matching/hotspot/pulldown/graphic_based) son las
@@ -339,12 +366,10 @@ function selectSim(pool: any[], targetTotal: number) {
   }
 
   function stratifiedScore(q: any): number {
-    const pgRoom = q.process_group && pgCounts[q.process_group] !== undefined
-      ? Math.max(0, pgTargets[q.process_group] - pgCounts[q.process_group])
-      : 0;
-    const pdRoom = q.performance_domain && pdCounts[q.performance_domain] !== undefined
-      ? Math.max(0, pdTargets[q.performance_domain] - pdCounts[q.performance_domain])
-      : 0;
+    const aeKeys = aeKeysOf(q);
+    const pgRoom = aeKeys.reduce((sum, k) => sum + (pgCounts[k] !== undefined ? Math.max(0, pgTargets[k] - pgCounts[k]) : 0), 0);
+    const ddKeys = ddKeysOf(q);
+    const pdRoom = ddKeys.reduce((sum, k) => sum + (pdCounts[k] !== undefined ? Math.max(0, pdTargets[k] - pdCounts[k]) : 0), 0);
     const tags = tagsOf(q);
     const thRoom = tags.length > 0
       ? tags.reduce((sum, t) => sum + (themeTargets[t] !== undefined ? Math.max(0, themeTargets[t] - themeCounts[t]) : 0), 0)
@@ -379,8 +404,8 @@ function selectSim(pool: any[], targetTotal: number) {
       picked.push(...block);
       count += block.length;
       for (const item of block) {
-        if (item.process_group && pgCounts[item.process_group] !== undefined) pgCounts[item.process_group]++;
-        if (item.performance_domain && pdCounts[item.performance_domain] !== undefined) pdCounts[item.performance_domain]++;
+        for (const k of aeKeysOf(item)) if (pgCounts[k] !== undefined) pgCounts[k]++;
+        for (const k of ddKeysOf(item)) if (pdCounts[k] !== undefined) pdCounts[k]++;
         const tags = tagsOf(item);
         if (tags.length > 0) {
           for (const t of tags) if (themeCounts[t] !== undefined) themeCounts[t]++;
