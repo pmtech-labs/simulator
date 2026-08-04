@@ -11,6 +11,7 @@
 
 import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { computeRemainingSeconds } from "../_shared/examTimer.ts";
 
 interface SubmitAnswerBody {
   exam_id: string;
@@ -49,13 +50,24 @@ Deno.serve(async (req) => {
 
   const { data: exam, error: examErr } = await admin
     .from("exams")
-    .select("id, user_id, status, mode")
+    .select("id, user_id, status, mode, time_limit_seconds, started_at, paused_at, break_extension_seconds")
     .eq("id", body.exam_id)
     .single();
 
   if (examErr || !exam) return errorResponse("Examen no encontrado", 404);
   if (exam.user_id !== user.id) return errorResponse("No autorizado", 403);
   if (exam.status !== "in_progress") return errorResponse("El examen ya no está en curso", 409);
+
+  // R6: "Si el reloj principal llega a 00:00, el examen finaliza de forma inmediata."
+  // No se puntúa aquí (responsabilidad de finish_exam) -- se bloquea la respuesta y se
+  // informa al frontend para que llame a finish_exam de inmediato. Solo aplica al
+  // reloj global de full_sim (los demás modos no tienen límite de tiempo estricto).
+  if (exam.mode === "full_sim") {
+    const remaining = computeRemainingSeconds(exam);
+    if (remaining !== null && remaining <= 0 && !exam.paused_at) {
+      return errorResponse("Se agotó el tiempo del examen. Debe finalizarse.", 409);
+    }
+  }
 
   const { data: question, error: qErr } = await admin
     .from("questions")

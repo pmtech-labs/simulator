@@ -1,0 +1,46 @@
+-- =========================================================
+-- 0043: R6/R7 -- reloj GLOBAL único (no 3 timers independientes) + descansos que
+-- pausan ese reloj, con exceso sobre 10 min descontado automáticamente
+--
+-- Aclaración recibida del PO (R6/R7 completos, tras la duda inicial sobre si había
+-- 1 o 3 relojes): confirmado que es UN ÚNICO temporizador de 240 min compartido
+-- entre los 3 bloques de 60 preguntas, no 3 presupuestos independientes como
+-- habíamos construido originalmente (basado en la documentación pública del ECO
+-- 2026, que resultó ser menos precisa en este punto que la especificación real
+-- del PO).
+--
+-- Cambios de esquema:
+-- - exams.paused_at: momento de inicio del descanso actual (NULL si no hay).
+-- - exams.break_extension_seconds: acumulado de tiempo "devuelto" al reloj
+--   principal por descansos DENTRO del límite de 10 min (nunca más de 600s por
+--   descanso, así el exceso se descuenta solo, sin lógica adicional).
+-- - exams.breaks_used: cuántos de los 2 descansos posibles ya se usaron.
+-- - exam_sections.status ahora tiene efecto real: pending/in_progress/completed
+--   (completed = bloqueado permanentemente, sin acceso posterior, R6).
+--
+-- Nueva Edge Function exam_section_control (3 acciones):
+-- - finalize_section: cierra el bloque actual permanentemente y abre el siguiente
+--   (o marca el examen listo para finalizar si era el bloque 3).
+-- - start_break: congela el reloj principal (máximo 2 descansos por examen, tras
+--   bloque 1 y tras bloque 2).
+-- - resume_break: calcula la pausa real, devuelve como máximo 600s al reloj
+--   principal -- el exceso sobre 10 min queda sin devolver.
+--
+-- submit_answer ahora rechaza respuestas si el reloj global llegó a 00:00 (R6:
+-- "el examen finaliza de forma inmediata") -- no puntúa ahí (eso sigue siendo
+-- responsabilidad exclusiva de finish_exam), solo informa al frontend para que lo
+-- llame de inmediato.
+--
+-- Nuevo helper compartido _shared/examTimer.ts (computeRemainingSeconds) usado por
+-- submit_answer y exam_section_control, para no duplicar la fórmula del reloj.
+--
+-- Verificado con un examen real de principio a fin: finalize_section(1) -> bloqueó
+-- sección 1, abrió sección 2 -- start_break -> congeló el reloj (remaining_seconds
+-- se mantuvo prácticamente plano durante la pausa) -- resume_break tras ~15s reales
+-- -> devueltos exactamente esos 15s (dentro del límite de 600s) -- finalize_section(2)
+-- -> bloqueó sección 2, abrió sección 3 -- reintentar finalize_section(1) -> rechazado
+-- correctamente ("Esta sección ya estaba finalizada"). Estado final en BD confirmado:
+-- secciones 1 y 2 'completed', sección 3 'in_progress', breaks_used=1,
+-- break_extension_seconds=15.
+-- =========================================================
+select 1; -- no-op, migración documental
