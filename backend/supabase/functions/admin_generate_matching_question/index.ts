@@ -10,6 +10,7 @@ import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin
 import { requireAdmin } from "../_shared/adminAuth.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
+import { tagRowsFor } from "../_shared/tagMapping.ts";
 
 interface CreateMatchingBody {
   connector_id: string;
@@ -144,7 +145,7 @@ Deno.serve(async (req) => {
 
     const { data: task } = await admin
       .from("eco_tasks")
-      .select("id, title, eco_domains(name), eco_enablers(description)")
+      .select("id, title, eco_domains(name, code), eco_enablers(description)")
       .eq("id", taskId)
       .single();
     if (!task) { failed++; errors.push(`Ítem ${i + 1}: tarea no encontrada`); continue; }
@@ -200,7 +201,7 @@ Deno.serve(async (req) => {
         .map((p: any) => `"${p.term}": ${p.definition}`)
         .join(" ");
 
-      await admin.from("questions").insert({
+      const { data: insertedQuestion } = await admin.from("questions").insert({
         item_type: "standalone",
         format: "matching",
         stem: draft.stem,
@@ -215,7 +216,19 @@ Deno.serve(async (req) => {
         focus_tags: targetThemes,
         status: "draft",
         practicum_payload: { left, right, correctPairs },
-      });
+      }).select("id").single();
+
+      if (insertedQuestion) {
+        await admin.from("question_tags").insert(tagRowsFor(insertedQuestion.id, {
+          domainCode: task.eco_domains.code,
+          approach: "predictive",
+          processGroup: targetProcessGroup,
+          performanceDomain: targetPerformanceDomain,
+          themes: targetThemes,
+          isCase: false,
+          format: "matching",
+        }));
+      }
       generated++;
     } catch (err) {
       failed++;

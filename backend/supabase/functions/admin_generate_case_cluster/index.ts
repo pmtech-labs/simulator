@@ -19,6 +19,7 @@ import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin
 import { requireAdmin } from "../_shared/adminAuth.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
+import { tagRowsFor } from "../_shared/tagMapping.ts";
 
 interface CreateClusterJobBody {
   connector_id: string;
@@ -245,7 +246,7 @@ Deno.serve(async (req) => {
 
     const { data: task } = await admin
       .from("eco_tasks")
-      .select("id, title, eco_domains(name), eco_enablers(description)")
+      .select("id, title, eco_domains(name, code), eco_enablers(description)")
       .eq("id", taskId)
       .single();
     if (!task) { clustersFailed++; errors.push(`Cluster ${c + 1}: tarea no encontrada`); continue; }
@@ -324,13 +325,29 @@ Deno.serve(async (req) => {
         status: "draft",
       }));
 
-      const { error: questionsErr } = await admin.from("questions").insert(rows);
+      const { data: insertedQuestions, error: questionsErr } = await admin.from("questions").insert(rows).select("id");
       if (questionsErr) {
         clustersFailed++;
         errors.push(`Cluster ${c + 1}: error al insertar preguntas (${questionsErr.message})`);
         // Limpieza: si fallan las preguntas, no dejar un cluster huérfano sin hijos.
         await admin.from("case_clusters").delete().eq("id", cluster.id);
         continue;
+      }
+
+      // Nueva taxonomía del PO (question_tags): todas las hijas de un mismo caso
+      // comparten dominio/enfoque/área de enfoque/dominio de desempeño/temáticas,
+      // porque describen la misma situación -- FOCE (Casos/Escenarios) para todas.
+      if (insertedQuestions) {
+        const tagRows = insertedQuestions.flatMap((q: any) => tagRowsFor(q.id, {
+          domainCode: task.eco_domains.code,
+          approach,
+          processGroup: targetProcessGroup,
+          performanceDomain: targetPerformanceDomain,
+          themes: targetThemes,
+          isCase: true,
+          format: "mc_single",
+        }));
+        await admin.from("question_tags").insert(tagRows);
       }
 
       clustersCreated++;

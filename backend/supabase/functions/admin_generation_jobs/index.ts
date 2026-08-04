@@ -15,6 +15,7 @@ import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin
 import { requireAdmin } from "../_shared/adminAuth.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
+import { tagRowsFor } from "../_shared/tagMapping.ts";
 
 interface CreateJobBody {
   connector_id: string;
@@ -423,7 +424,7 @@ Deno.serve(async (req) => {
 
     const { data: task } = await admin
       .from("eco_tasks")
-      .select("id, title, eco_domains(name), eco_enablers(description)")
+      .select("id, title, eco_domains(name, code), eco_enablers(description)")
       .eq("id", taskId)
       .single();
 
@@ -467,7 +468,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      await admin.from("questions").insert({
+      const { data: insertedQuestion } = await admin.from("questions").insert({
         item_type: "standalone",
         format,
         stem: draft.stem,
@@ -482,7 +483,21 @@ Deno.serve(async (req) => {
         focus_tags: [...(body.focus_tags ?? []), ...targetThemes],
         status: "draft", // nunca se publica automáticamente
         generation_job_id: job.id,
-      });
+      }).select("id").single();
+
+      // Nueva taxonomía del PO (question_tags): DO/CI/AE/DD/FO/NT derivados de los
+      // mismos valores ya fijados arriba, ninguna llamada extra a IA.
+      if (insertedQuestion) {
+        await admin.from("question_tags").insert(tagRowsFor(insertedQuestion.id, {
+          domainCode: task.eco_domains.code,
+          approach,
+          processGroup: targetProcessGroup,
+          performanceDomain: targetPerformanceDomain,
+          themes: targetThemes,
+          isCase: false,
+          format,
+        }));
+      }
       generated++;
     } catch (err) {
       failed++;

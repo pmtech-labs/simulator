@@ -1,0 +1,29 @@
+-- =========================================================
+-- 0046: Los 5 generadores de contenido escriben ya en question_tags (nueva taxonomía)
+--
+-- Punto 1 completado (de "sigue con los puntos 1-3"): los 5 generadores de contenido
+-- ahora insertan también en question_tags con los códigos exactos del Excel del PO,
+-- usando un helper compartido (_shared/tagMapping.ts) para no duplicar la lógica de
+-- mapeo 5 veces:
+--
+-- - admin_generation_jobs (mc_single/mc_multi/pulldown): DO/CI/AE/DD derivados de los
+--   valores ya fijados por rotación ponderada; FO según el formato resuelto; NT según
+--   los temas elegidos (0-3, independientes).
+-- - admin_generate_case_cluster: igual, pero aplicado a TODAS las hijas de un mismo
+--   cluster a la vez (comparten escenario, comparten etiquetas) -- FOCE fijo.
+-- - admin_generate_matching_question: approach fijo "predictive", FO=FOTU/FOTM
+--   nunca aplica aquí (siempre FOIN vía el default del helper).
+-- - admin_generate_hotspot_question: mismo patrón que matching.
+-- - generate_network_diagram_question / generate_earned_value_question (deterministas,
+--   sin LLM): performance_domain ahora fijo por contenido (cronograma / finanzas
+--   respectivamente, antes no se asignaba ninguno) -- domainCode se lee de la tarea
+--   ECO real en vez de quedar sin asignar.
+--
+-- Verificado con generaciones reales de cada uno de los 5 generadores tras el
+-- despliegue: todas las preguntas nuevas llevan sus 5-6 etiquetas correctas
+-- (DO/CI/AE/DD/FO + NT si aplica). Ejemplo real: diagrama de red generó
+-- [AEMC,CIPR,DDCR,DOPE,FOIN] (DDCR=cronograma); valor ganado generó
+-- [AEMC,CIPR,DDFI,DOPE,FOIN] (DDFI=finanzas) -- ambos con el dominio de desempeño
+-- correcto para su tipo de contenido.
+-- =========================================================
+select 1; -- no-op, migración documental

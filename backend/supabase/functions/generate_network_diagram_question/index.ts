@@ -19,6 +19,7 @@
 import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
 import { requireAdmin } from "../_shared/adminAuth.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { tagRowsFor } from "../_shared/tagMapping.ts";
 
 interface ActivityDef {
   id: string;
@@ -282,7 +283,7 @@ Deno.serve(async (req) => {
   const count = Math.min(Math.max(body.count ?? 5, 1), 30);
   const admin = getSupabaseAdmin();
 
-  const { data: task, error: taskErr } = await admin.from("eco_tasks").select("id").eq("id", body.task_id).single();
+  const { data: task, error: taskErr } = await admin.from("eco_tasks").select("id, eco_domains(code)").eq("id", body.task_id).single();
   if (taskErr || !task) return errorResponse("Tarea ECO no encontrada", 404);
 
   const insertedIds: string[] = [];
@@ -301,13 +302,27 @@ Deno.serve(async (req) => {
         approach: body.approach ?? "predictive",
         difficulty: q.difficulty,
         process_group: "monitoring_control", // interpretar CPM/ruta crítica es inherentemente de seguimiento
+        performance_domain: "cronograma", // diagrama de red = cronograma por naturaleza del contenido
         status: "draft", // sigue pasando por revisión humana, aunque la matemática esté garantizada
         practicum_payload: q.practicum_payload,
         generation_job_id: null, // no interviene ningún LLM/conector -- igual que el contenido manual
       })
       .select("id")
       .single();
-    if (!error && data) insertedIds.push(data.id);
+    if (!error && data) {
+      insertedIds.push(data.id);
+      // Nueva taxonomía del PO (question_tags): sin IA, todos los valores son fijos
+      // o derivados directamente (igual que el resto de columnas de este generador).
+      await admin.from("question_tags").insert(tagRowsFor(data.id, {
+        domainCode: (task as any).eco_domains?.code ?? "process",
+        approach: body.approach ?? "predictive",
+        processGroup: "monitoring_control",
+        performanceDomain: "cronograma",
+        themes: [],
+        isCase: false,
+        format: "graphic_based",
+      }));
+    }
   }
 
   return jsonResponse({ generated: insertedIds.length, requested: count, question_ids: insertedIds });
