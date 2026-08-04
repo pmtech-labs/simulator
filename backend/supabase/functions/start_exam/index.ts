@@ -207,9 +207,17 @@ Deno.serve(async (req) => {
 
   // Asignar section_number: en full_sim, 3 secciones reales sin partir clusters;
   // en el resto de modos, todo va a la sección 1 (no aplica la estructura de 3 bloques).
+  // El PO ha señalado que en el medio examen los casos salían repartidos en varios
+  // bloques separados (uno por cada dominio, por cómo selectSim los intercala
+  // internamente) en vez de un único bloque consolidado como en el examen completo.
+  // consolidateCasesFirst reordena TODOS los casos al principio (contiguos), igual
+  // que hace assignBlocksOfSixty para full_sim, pero sin partir en 3 bloques de 60
+  // (eso sigue siendo exclusivo de R5/full_sim) -- se aplica a cualquier modo que
+  // pueda mezclar casos con preguntas sueltas (half_sim, y los modos de práctica que
+  // no fuercen approach_filter/process_group_filter).
   const sectioned = body.mode === "full_sim"
     ? assignSections(selected, FULL_SIM_SECTIONS, FULL_SIM_TOTAL_SECONDS)
-    : selected.map((q) => ({ ...q, section_number: 1 }));
+    : consolidateCasesFirst(selected).map((q) => ({ ...q, section_number: 1 }));
 
   const examItems = sectioned.map((q: any, idx: number) => ({
     exam_id: exam.id,
@@ -501,6 +509,16 @@ function assignBlocksOfSixty(items: any[]): any[][] {
   const block3 = rest.slice(60, 120);
 
   return [[...caseItems, ...block1Filler], block2, block3];
+}
+
+// Igual que el bloque 1 de assignBlocksOfSixty (todos los casos juntos, contiguos)
+// pero sin partir el resto en bloques de tamaño fijo -- para modos sin la estructura
+// de 3 bloques de R5 (medio examen y práctica) que aun así mezclen casos con sueltas.
+function consolidateCasesFirst(items: any[]): any[] {
+  const blocks = toBlocksAtomic(items);
+  const caseBlocks = blocks.filter((b) => b[0].cluster_id);
+  const nonCaseBlocks = blocks.filter((b) => !b[0].cluster_id);
+  return [...caseBlocks.flat(), ...shuffle(nonCaseBlocks.flat())];
 }function selectDrill(pool: any[], count: number) {
   return groupClusters(shuffle(pool)).slice(0, count);
 }

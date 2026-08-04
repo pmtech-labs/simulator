@@ -1,0 +1,21 @@
+-- =========================================================
+-- 0045: FIX -- casos repartidos en varios bloques en medio examen (y práctica)
+--
+-- Reportado por el PO: en el medio examen los casos salían repartidos en 3 grupos
+-- separados (uno por cada dominio ECO: Personas/Proceso/Entorno de negocio), en vez
+-- de un único bloque consolidado como en el examen completo. Causa: selectSim
+-- intercala casos con preguntas sueltas DENTRO de cada dominio (el bucle recorre
+-- dominio por dominio y en cada uno añade sus propios casos + sueltas), y solo
+-- full_sim tenía un paso posterior (assignBlocksOfSixty) que consolidaba todos los
+-- casos juntos al principio -- half_sim y los modos de práctica no lo tenían.
+--
+-- Fix: nueva función consolidateCasesFirst (mismo principio que el bloque 1 de
+-- assignBlocksOfSixty -- todos los casos contiguos al principio -- pero sin partir
+-- el resto en bloques de tamaño fijo, ya que la partición en 3 bloques de 60 sigue
+-- siendo exclusiva de R5/full_sim). Se aplica a half_sim y al resto de modos que no
+-- sean full_sim.
+--
+-- Verificado con llamada real a medio examen: 25 preguntas de caso, todas contiguas
+-- desde la posición 0 (antes aparecían en 3 grupos separados: 0-5, 30-40, 67-74).
+-- =========================================================
+select 1; -- no-op, migración documental
