@@ -11,7 +11,7 @@
 import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
-type ExamMode = "full_sim" | "domain_drill" | "case_only" | "custom" | "unit_quiz" | "cumulative";
+type ExamMode = "full_sim" | "half_sim" | "domain_drill" | "case_only" | "custom" | "unit_quiz" | "cumulative";
 
 interface StartExamBody {
   mode: ExamMode;
@@ -27,6 +27,12 @@ interface StartExamBody {
 const FULL_SIM_TOTAL = 180;
 const FULL_SIM_SECTIONS = 3;
 const FULL_SIM_TOTAL_SECONDS = 240 * 60;
+// Requisito del PO: "medio examen" -- 90 preguntas / 2h, manteniendo los MISMOS
+// criterios de % que el examen completo (dominio/enfoque/área de enfoque/dominio de
+// desempeño/formato/temáticas) -- sin la estructura de 3 bloques + revisión +
+// descansos de R5-R7, que el PO solo especificó para el examen completo de 180.
+const HALF_SIM_TOTAL = 90;
+const HALF_SIM_TOTAL_SECONDS = 120 * 60;
 const DOMAIN_WEIGHTS: Record<string, number> = {
   people: 0.33,
   process: 0.41,
@@ -59,7 +65,7 @@ Deno.serve(async (req) => {
   const includesPracticumFull = (license as any).plans?.includes_practicum_full ?? false;
   const planCode = (license as any).plans?.code;
 
-  if (body.mode === "full_sim") {
+  if (body.mode === "full_sim" || body.mode === "half_sim") {
     const { data: gaps, error: gapsErr } = await admin.rpc("validate_bank_readiness");
     if (gapsErr) return errorResponse(gapsErr.message, 500);
     if (gaps && gaps.length > 0) {
@@ -68,7 +74,9 @@ Deno.serve(async (req) => {
         409,
       );
     }
+  }
 
+  if (body.mode === "full_sim") {
     // El plan gratuito incluye UN simulacro completo de regalo, no limitado por tiempo
     // de sesión (a diferencia de competidores con cronómetro de prueba) sino por uso.
     if (planCode === "free" && (license as any).free_full_sim_used) {
@@ -154,6 +162,8 @@ Deno.serve(async (req) => {
 
   const selected = body.mode === "full_sim"
     ? selectFullSim(pool)
+    : body.mode === "half_sim"
+    ? selectHalfSim(pool)
     : selectDrill(pool, body.question_count ?? 50);
 
   // Averiguar qué ítems ya respondió el usuario en exámenes anteriores (para new_items_count
@@ -165,7 +175,15 @@ Deno.serve(async (req) => {
     .not("answered_at", "is", null);
   const previouslySeenIds = new Set((previousAnswers ?? []).map((r: any) => r.question_id));
 
-  const timeLimitSeconds = body.mode === "full_sim" ? FULL_SIM_TOTAL_SECONDS : null;
+  // Requisito del PO: el cronómetro SOLO aparece en el simulacro completo (180/4h) y
+  // en el medio examen (90/2h) -- el resto de modos de práctica no tienen límite de
+  // tiempo estricto (time_limit_seconds queda null, que es como el frontend sabe que
+  // no debe mostrar ningún reloj).
+  const timeLimitSeconds = body.mode === "full_sim"
+    ? FULL_SIM_TOTAL_SECONDS
+    : body.mode === "half_sim"
+    ? HALF_SIM_TOTAL_SECONDS
+    : null;
 
   const { data: exam, error: examErr } = await admin
     .from("exams")
@@ -223,12 +241,25 @@ Deno.serve(async (req) => {
     .select("id, item_type, format, cluster_id, stem, options, difficulty, process_group, performance_domain, focus_tags, practicum_payload, case_clusters(id, title, scenario_text, media)")
     .in("id", selected.map((q) => q.id));
 
-  // No se filtra correct_answer/explanation aquí: ese campo ni siquiera se selecciona.
-  const itemsWithMeta = (renderable ?? []).map((r: any) => ({
-    ...r,
-    section_number: sectioned.find((s: any) => s.id === r.id)?.section_number ?? 1,
-    previously_seen: previouslySeenIds.has(r.id),
-  }));
+  // BUG encontrado (numeración de preguntas descolocada, ej. "1, 8, 9, 10, 11..." en
+  // vez de 1-60 secuencial por bloque): .in("id", ...) devuelve las filas en el orden
+  // de la base de datos, NO en el orden real ya calculado en `sectioned` (bloques +
+  // secuencia). Aquí se reordena `itemsWithMeta` según ESE orden antes de numerar --
+  // la numeración 1-180 debe asignarse la ÚLTIMA, sobre la lista ya ordenada por
+  // bloque, nunca antes.
+  const orderIndexById = new Map(sectioned.map((q: any, idx: number) => [q.id, idx]));
+  const sectionNumberById = new Map(sectioned.map((q: any) => [q.id, q.section_number]));
+  const renderableById = new Map((renderable ?? []).map((r: any) => [r.id, r]));
+
+  const itemsWithMeta = sectioned
+    .map((q: any) => renderableById.get(q.id))
+    .filter((r: any): r is any => !!r)
+    .map((r: any) => ({
+      ...r,
+      section_number: sectionNumberById.get(r.id) ?? 1,
+      order_index: orderIndexById.get(r.id),
+      previously_seen: previouslySeenIds.has(r.id),
+    }));
 
   return jsonResponse({
     exam_id: exam.id,
@@ -247,8 +278,7 @@ Deno.serve(async (req) => {
 // prioridad; grupo de proceso y temática se reparten dentro de lo que el banco permita
 // en cada momento (con un banco todavía pequeño, no siempre se podrá llegar al 20%/
 // 50% exactos, pero el reparto activo hace que se acerque en vez de quedar al azar).
-function selectFullSim(pool: any[]) {
-  const targetTotal = FULL_SIM_TOTAL;
+function selectSim(pool: any[], targetTotal: number) {
   const byDomain: Record<string, any[]> = { people: [], process: [], business_environment: [] };
 
   for (const q of pool) {
@@ -416,6 +446,19 @@ function selectFullSim(pool: any[]) {
   }
 
   return trimToTarget(result, targetTotal);
+}
+
+function selectFullSim(pool: any[]) {
+  return selectSim(pool, FULL_SIM_TOTAL);
+}
+
+// Requisito del PO: "medio examen" -- mismos criterios de % que el examen completo,
+// escalados a 90 preguntas (la función selectSim ya trabaja en porcentajes relativos
+// al targetTotal que se le pase, así que reutilizarla aquí conserva exactamente las
+// mismas proporciones de dominio/enfoque/área de enfoque/dominio de desempeño/
+// formato/temáticas, sin duplicar la lógica).
+function selectHalfSim(pool: any[]) {
+  return selectSim(pool, HALF_SIM_TOTAL);
 }
 
 // Requisito del PO (R5): un examen completo se divide en 3 bloques de EXACTAMENTE 60

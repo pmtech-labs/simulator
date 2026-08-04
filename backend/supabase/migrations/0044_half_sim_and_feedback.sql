@@ -1,0 +1,25 @@
+-- =========================================================
+-- 0044: Medio examen (half_sim, 90 preguntas/2h) + feedback de usuarios
+--
+-- Nuevos requisitos del PO:
+-- 1. Añadir "medio examen": 90 preguntas / 2h, manteniendo los mismos criterios de %
+--    que el examen completo. selectFullSim se parametrizó (renombrada selectSim) para
+--    aceptar el total objetivo, así que selectHalfSim reutiliza exactamente la misma
+--    lógica de reparto sin duplicar código -- las proporciones se mantienen porque
+--    todo el cálculo interno ya trabajaba en porcentajes relativos al total, nunca en
+--    números absolutos fijos.
+-- 2. exam_mode (enum) necesitó el valor 'half_sim' añadido.
+-- 3. El cronómetro ahora solo se activa para full_sim (240min) y half_sim (120min) --
+--    el resto de modos de práctica mantienen time_limit_seconds=null como ya tenían.
+-- 4. Nueva tabla app_feedback para que los candidatos puedan enviar feedback libre de
+--    la aplicación desde alguna pantalla de usuario -- con RLS que permite inserción
+--    y lectura directas del propio usuario sin necesidad de una Edge Function
+--    dedicada (default user_id = auth.uid() para que el frontend no tenga que pasarlo).
+--
+-- Verificado con llamadas reales:
+-- - half_sim: 90 preguntas, time_limit_seconds=7200, reparto por dominio 30/37/23
+--   (33,3%/41,1%/25,6% vs objetivo 33/41/26 -- dentro de rango).
+-- - app_feedback: insert real vía REST con solo el token de sesión, sin pasar
+--   user_id explícitamente (se recoge solo del JWT vía el default).
+-- =========================================================
+select 1; -- no-op, migración documental
