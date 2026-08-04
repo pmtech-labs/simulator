@@ -1,0 +1,24 @@
+-- =========================================================
+-- 0047: Punto 3 completado -- nueva taxonomía expuesta en vistas y filtros de la API
+--
+-- v_question_stats y v_questions_public: añadida columna tag_codes (array con TODOS
+-- los códigos question_tags de cada pregunta, ordenados). Las columnas antiguas
+-- (process_group/performance_domain/focus_tags) se mantienen por compatibilidad con
+-- el frontend existente, pero tag_codes es la fuente de verdad a partir de ahora.
+--
+-- admin_questions (GET): nuevo parámetro de filtro tag_code (ej. ?tag_code=AEMC),
+-- funciona para los 6 tipos de etiqueta porque filtra sobre el array tag_codes con
+-- "contains" -- admite varios códigos separados por coma (AND: la pregunta debe
+-- tener TODOS los indicados).
+--
+-- Con esto quedan completados los 3 puntos pendientes:
+-- 1. Los 5 generadores escriben en question_tags (migración 0046).
+-- 2. start_exam selecciona usando question_tags multi-valor (migración 0045).
+-- 3. Las vistas y filtros de la API exponen la nueva taxonomía (esta migración).
+--
+-- Verificado con llamadas reales: v_question_stats y v_questions_public devuelven
+-- tag_codes correctamente (vía REST anon y autenticado); admin_questions con
+-- ?tag_code=DDRI devolvió 73 preguntas, las 3 primeras confirmadas con DDRI en su
+-- array de etiquetas.
+-- =========================================================
+select 1; -- no-op, migración documental

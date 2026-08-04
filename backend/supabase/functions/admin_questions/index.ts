@@ -57,6 +57,17 @@ Deno.serve(async (req) => {
     const performanceDomain = params.get("performance_domain");
     if (performanceDomain) query = query.eq("performance_domain", performanceDomain);
 
+    // Nueva taxonomía del PO (Excel Etiquetas_preguntas_simulador_PMP): filtro por
+    // cualquier código de etiqueta (ej. tag_code=AEMC, tag_code=DDRI) -- funciona para
+    // los 6 tipos (DO/CI/AE/DD/FO/NT) porque tag_codes es un array con TODOS los
+    // códigos de la pregunta. Admite varios valores separados por coma (AND: la
+    // pregunta debe tener TODOS los códigos indicados).
+    const tagCodesParam = params.get("tag_code");
+    if (tagCodesParam) {
+      const codes = tagCodesParam.split(",").map((c) => c.trim()).filter(Boolean);
+      if (codes.length > 0) query = query.contains("tag_codes", codes);
+    }
+
     const jobId = params.get("job_id");
     if (jobId) query = query.eq("generation_job_id", jobId);
 
