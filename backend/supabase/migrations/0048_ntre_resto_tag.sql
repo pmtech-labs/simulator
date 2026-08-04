@@ -1,0 +1,26 @@
+-- =========================================================
+-- 0048: NTRE ("Resto") -- cuarto código real para Nueva Temática, aclarado por el PO
+--
+-- El PO aclaró la aparente contradicción entre "30% Resto (no incluye las 3
+-- temáticas)" del R1 y "todas las preguntas necesitan etiqueta de cada tipo":
+-- NO son dos opciones distintas -- "Resto" es un CUARTO CÓDIGO REAL (NTRE), no una
+-- ausencia de etiqueta. Las preguntas que son de gestión de proyectos pero no tratan
+-- ninguna de las 3 temáticas específicas (NTEV/NTSO/NTIA) llevan NTRE en su lugar.
+-- Nunca coexiste con las otras 3 en la misma pregunta.
+--
+-- Cambios:
+-- - question_tag_defs: añadido NTRE ("Resto (no incluye las 3 temáticas)").
+-- - Backfill: las 422 preguntas existentes sin ninguna etiqueta NT recibieron NTRE.
+-- - _shared/tagMapping.ts (usado por los 5 generadores): buildTagCodes añade NTRE
+--   automáticamente cuando el array de temas está vacío.
+-- - reclassify_question_tags: mismo fallback para reevaluaciones futuras.
+-- - Los 6 Edge Functions que tocan question_tags redesplegadas con el cambio.
+--
+-- Verificado con generación real tras el despliegue (5 preguntas, lote mixto):
+-- 2 con NTEV (temática real detectada), 2 con NTRE (sin temática, asignado
+-- correctamente en vez de quedar vacío), ninguna sin etiqueta NT.
+--
+-- Cobertura final de TODO el banco (476 preguntas, publicadas + borrador):
+-- 476/476 con alguna etiqueta NT -- 100% real, no aproximado.
+-- =========================================================
+select 1; -- no-op, migración documental

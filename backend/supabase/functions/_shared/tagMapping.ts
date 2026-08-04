@@ -43,9 +43,7 @@ const THEME_TO_NT: Record<string, string> = {
   entrega_valor: "NTEV",
   sostenibilidad: "NTSO",
   ia: "NTIA",
-};
-
-export interface TagInputs {
+};export interface TagInputs {
   domainCode: string; // people | process | business_environment
   approach: string; // predictive | agile | hybrid
   processGroup: string; // initiation | planning | execution | monitoring_control | closing
@@ -88,6 +86,12 @@ export function buildTagCodes(inputs: TagInputs): string[] {
     const ntCode = THEME_TO_NT[theme];
     if (ntCode) codes.push(ntCode);
   }
+
+  // Aclaración del PO: "Resto" (NTRE) es un código real, no una ausencia de etiqueta
+  // -- toda pregunta debe tener alguna etiqueta de tipo NT. Si no se le asignó
+  // ninguna de las 3 temáticas específicas, se le asigna NTRE (nunca coexisten).
+  const hasSpecificTheme = inputs.themes.some((t) => THEME_TO_NT[t]);
+  if (!hasSpecificTheme) codes.push("NTRE");
 
   return codes;
 }

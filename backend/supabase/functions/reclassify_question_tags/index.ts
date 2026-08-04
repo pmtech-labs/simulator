@@ -144,6 +144,10 @@ Deno.serve(async (req) => {
       const areas: string[] = Array.isArray(classification.areas_enfoque) ? classification.areas_enfoque.filter((c: string) => AE_CODES.includes(c)) : [];
       const domains: string[] = Array.isArray(classification.dominios_desempeno) ? classification.dominios_desempeno.filter((c: string) => DD_CODES.includes(c)) : [];
       const themes: string[] = Array.isArray(classification.nuevas_tematicas) ? classification.nuevas_tematicas.filter((c: string) => NT_CODES.includes(c)) : [];
+      // Aclaración del PO: "Resto" (NTRE) es un código real -- toda pregunta debe
+      // tener alguna etiqueta de tipo NT. Si el modelo no detectó ninguna de las 3
+      // temáticas específicas, se asigna NTRE (nunca coexiste con las otras 3).
+      const themesWithFallback = themes.length > 0 ? themes : ["NTRE"];
 
       if (areas.length === 0 || domains.length === 0) {
         failed++;
@@ -151,7 +155,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const rows = [...areas, ...domains, ...themes].map((tag_code) => ({ question_id: q.id, tag_code }));
+      const rows = [...areas, ...domains, ...themesWithFallback].map((tag_code) => ({ question_id: q.id, tag_code }));
       const { error: insertErr } = await admin.from("question_tags").insert(rows);
       if (insertErr) {
         failed++;
