@@ -16,6 +16,7 @@ import { requireAdmin } from "../_shared/adminAuth.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
+import { buildRejectionContext } from "../_shared/rejectionContext.ts";
 
 interface CreateJobBody {
   connector_id: string;
@@ -80,7 +81,7 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con est
 {"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":<entero 1-5 según se te indique, NUNCA un valor fijo por defecto>}`;
 }
 
-function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string, targetProcessGroup: string, targetThemes: Theme[], targetPerformanceDomain: string, targetMultiLetters: string[] | null) {
+function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string, targetProcessGroup: string, targetThemes: Theme[], targetPerformanceDomain: string, targetMultiLetters: string[] | null, rejectionContext: string) {
   const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
   const focusLine = focusTags.length > 0 ? `\nTemas transversales a entretejer si es natural: ${focusTags.join(", ")}` : "";
   const themeLine = targetThemes.length > 0
@@ -126,7 +127,7 @@ ocurre la situación, para que sea reconocible sin ambigüedad.
 DOMINIO DE DESEMPEÑO (obligatorio, no lo cambies): la pregunta debe girar principalmente en torno a
 "${PERFORMANCE_DOMAIN_LABELS[targetPerformanceDomain]}". Esta etiqueta es independiente de la tarea ECO
 indicada arriba — no hace falta que coincidan; solo asegúrate de que el contenido real de la pregunta
-(la decisión que debe tomar el candidato) esté genuinamente relacionado con "${PERFORMANCE_DOMAIN_LABELS[targetPerformanceDomain]}".`;
+(la decisión que debe tomar el candidato) esté genuinamente relacionado con "${PERFORMANCE_DOMAIN_LABELS[targetPerformanceDomain]}".${rejectionContext}`;
 }
 
 const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"];
@@ -431,10 +432,11 @@ Deno.serve(async (req) => {
     if (!task) { failed++; errors.push(`Tarea ${taskId} no encontrada`); continue; }
 
     try {
+      const rejectionContext = await buildRejectionContext(admin, taskId);
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(task, approach, format, targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetThemes, targetPerformanceDomain, targetMultiLetters),
+        buildUserPrompt(task, approach, format, targetDifficulty, body.focus_tags ?? [], targetLetter, targetProcessGroup, targetThemes, targetPerformanceDomain, targetMultiLetters, rejectionContext),
       );
 
       const cleaned = result.text.replace(/```json|```/g, "").trim();

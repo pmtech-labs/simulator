@@ -11,6 +11,7 @@ import { requireAdmin } from "../_shared/adminAuth.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
+import { buildRejectionContext } from "../_shared/rejectionContext.ts";
 
 interface CreateHotspotBody {
   connector_id: string;
@@ -57,7 +58,7 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:
 }`;
 }
 
-function buildUserPrompt(task: any, targetThemes: Theme[]): string {
+function buildUserPrompt(task: any, targetThemes: Theme[], rejectionContext: string): string {
   const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
   const themeLine = targetThemes.length > 0
     ? `\n\nTemática(s) a integrar si es natural: ${targetThemes.join(", ")}`
@@ -68,7 +69,7 @@ Enablers de referencia:
 ${enablers}${themeLine}
 
 Genera un escenario situacional relacionado con esta tarea donde el candidato deba identificar la zona
-correcta de un diagrama de clasificación.`;
+correcta de un diagrama de clasificación.${rejectionContext}`;
 }
 
 // --- Plantillas de diagrama (SVG generado por código, coordenadas ya verificadas) ---
@@ -220,10 +221,11 @@ Deno.serve(async (req) => {
     if (!task) { failed++; errors.push(`Ítem ${i + 1}: tarea no encontrada`); continue; }
 
     try {
+      const rejectionContext = await buildRejectionContext(admin, taskId);
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(template, zonesCount),
-        buildUserPrompt(task, targetThemes),
+        buildUserPrompt(task, targetThemes, rejectionContext),
         1200,
       );
 

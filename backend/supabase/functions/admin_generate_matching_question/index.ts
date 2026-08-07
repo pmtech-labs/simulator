@@ -11,6 +11,7 @@ import { requireAdmin } from "../_shared/adminAuth.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
+import { buildRejectionContext } from "../_shared/rejectionContext.ts";
 
 interface CreateMatchingBody {
   connector_id: string;
@@ -56,7 +57,7 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:
 }`;
 }
 
-function buildUserPrompt(task: any, pairsCount: number, targetThemes: Theme[]): string {
+function buildUserPrompt(task: any, pairsCount: number, targetThemes: Theme[], rejectionContext: string): string {
   const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
   const themeLine = targetThemes.length > 0
     ? `\n\nTemática(s) a integrar si es natural: ${targetThemes.join(", ")}`
@@ -68,7 +69,7 @@ ${enablers}${themeLine}
 
 Genera EXACTAMENTE ${pairsCount} pares término-definición en español (neutro, España/LATAM) relacionados
 con conceptos, técnicas o roles de esta tarea. Cada término debe ser corto (una o dos palabras/frase corta);
-cada definición debe describir claramente y sin ambigüedad a QUÉ término corresponde.`;
+cada definición debe describir claramente y sin ambigüedad a QUÉ término corresponde.${rejectionContext}`;
 }
 
 function repairUnescapedQuotes(text: string): string {
@@ -151,10 +152,11 @@ Deno.serve(async (req) => {
     if (!task) { failed++; errors.push(`Ítem ${i + 1}: tarea no encontrada`); continue; }
 
     try {
+      const rejectionContext = await buildRejectionContext(admin, taskId);
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(task, pairsCount, targetThemes),
+        buildUserPrompt(task, pairsCount, targetThemes, rejectionContext),
         1500,
       );
 

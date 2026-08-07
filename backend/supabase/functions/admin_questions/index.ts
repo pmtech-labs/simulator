@@ -18,6 +18,10 @@ import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 interface UpdateStatusBody {
   question_ids: string[];
   status: "draft" | "published" | "retired";
+  // Motivo de rechazo (obligatorio en la práctica cuando status="retired" viene del
+  // flujo de revisión del PO, aunque no se fuerza aquí para no romper el fallback
+  // automático de DELETE, que retira sin motivo cuando la pregunta ya se usó en un examen).
+  reason?: string;
 }
 
 Deno.serve(async (req) => {
@@ -107,6 +111,31 @@ Deno.serve(async (req) => {
       .select("id, status");
 
     if (error) return errorResponse(error.message, 500);
+
+    // Petición del PO: al retirar una pregunta durante la revisión de calidad, guardar
+    // el motivo en question_rejections -- alimenta la generación futura para no repetir
+    // los mismos errores (ver _shared/rejectionContext.ts, usado por los generadores).
+    if (body.status === "retired" && body.reason?.trim()) {
+      const { data: retiredQuestions } = await admin
+        .from("questions")
+        .select("id, question_number, task_id, format, stem")
+        .in("id", body.question_ids);
+
+      if (retiredQuestions?.length) {
+        const rejectionRows = retiredQuestions.map((q: any) => ({
+          question_id: q.id,
+          question_number: q.question_number,
+          task_id: q.task_id,
+          format: q.format,
+          stem_snapshot: q.stem,
+          reason: body.reason!.trim(),
+          rejected_by: user.id,
+        }));
+        const { error: rejectionErr } = await admin.from("question_rejections").insert(rejectionRows);
+        if (rejectionErr) return errorResponse(rejectionErr.message, 500);
+      }
+    }
+
     return jsonResponse({ updated: data });
   }
 

@@ -20,6 +20,7 @@ import { requireAdmin } from "../_shared/adminAuth.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
+import { buildRejectionContext } from "../_shared/rejectionContext.ts";
 
 interface CreateClusterJobBody {
   connector_id: string;
@@ -117,6 +118,7 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con est
 function buildUserPrompt(
   task: any, approach: string, questionsCount: number, targetLetters: string[],
   targetDifficulties: number[], targetProcessGroup: string, targetThemes: Theme[], targetPerformanceDomain: string,
+  rejectionContext: string,
 ): string {
   const enablers = (task.eco_enablers ?? []).map((e: any) => `- ${e.description}`).join("\n");
   const themeLine = targetThemes.length > 0
@@ -145,7 +147,7 @@ REGLAS OBLIGATORIAS POR PREGUNTA (no las cambies, constrúyelas desde el princip
 ${perQuestionRules}
 
 No generes ninguna pregunta con la respuesta correcta en otra posición y la corrijas después -- constrúyela
-ya así desde el principio, igual que la dificultad indicada para cada una.`;
+ya así desde el principio, igual que la dificultad indicada para cada una.${rejectionContext}`;
 }
 
 function repairUnescapedQuotes(text: string): string {
@@ -252,10 +254,11 @@ Deno.serve(async (req) => {
     if (!task) { clustersFailed++; errors.push(`Cluster ${c + 1}: tarea no encontrada`); continue; }
 
     try {
+      const rejectionContext = await buildRejectionContext(admin, taskId);
       const result = await callLlm(
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
-        buildUserPrompt(task, approach, questionsCount, targetLetters, targetDifficulties, targetProcessGroup, targetThemes, targetPerformanceDomain),
+        buildUserPrompt(task, approach, questionsCount, targetLetters, targetDifficulties, targetProcessGroup, targetThemes, targetPerformanceDomain, rejectionContext),
         5000, // un cluster completo (escenario + 3-5 preguntas con opciones+explicación) necesita mucho más espacio que una pregunta suelta (1200 por defecto truncaba el JSON a mitad)
       );
 

@@ -1,0 +1,37 @@
+-- =========================================================
+-- 0050: Numeración de preguntas + motivo de rechazo al retirar (petición del PO)
+--
+-- El PO está revisando el banco pregunta a pregunta y pidió:
+-- 1. Cada pregunta numerada (referencia estable, ej. "la pregunta #47").
+-- 2. Al retirar una pregunta, poder escribir el motivo del rechazo.
+-- 3. La pregunta NO se borra, queda 'retired' (ya existía este estado).
+-- 4. Los motivos de rechazo deben alimentar la generación futura, para no repetir
+--    los mismos errores.
+--
+-- Implementado:
+-- - questions.question_number: numeración persistente (no de posición), asignada
+--   una sola vez al crear la pregunta. Backfill aplicado a las 476 preguntas
+--   existentes en orden cronológico real (1-476).
+-- - Tabla question_rejections: motivo + snapshot (stem/task_id/format) que
+--   sobrevive aunque la pregunta se borre físicamente más adelante.
+-- - v_question_stats/v_questions_public: exponen question_number;
+--   v_question_stats también expone latest_rejection_reason.
+-- - admin_questions (PATCH): al retirar con `reason`, guarda el motivo
+--   automáticamente en question_rejections.
+-- - Nuevo helper _shared/rejectionContext.ts: consulta rechazos de la misma tarea
+--   ECO (hasta 3) + rechazos recientes en general (hasta 5) y los inyecta en el
+--   prompt de generación como contexto obligatorio a tener en cuenta.
+-- - Conectado en los 4 generadores que usan LLM (admin_generation_jobs,
+--   admin_generate_case_cluster, admin_generate_matching_question,
+--   admin_generate_hotspot_question). Los 2 deterministas (diagrama de red, valor
+--   ganado) no lo necesitan, no usan LLM.
+--
+-- Verificado con datos reales de principio a fin: retirada de una pregunta de
+-- prueba con motivo -> confirmado guardado en question_rejections -> generación
+-- real de una pregunta nueva para la MISMA tarea ECO -> completada sin errores
+-- (contexto de rechazo inyectado correctamente en el prompt). Los 4 generadores
+-- probados individualmente tras el despliegue, todos generan sin errores. Datos
+-- de prueba limpiados al terminar (pregunta restaurada a 'published', rechazo de
+-- prueba eliminado) para no ensuciar el aprendizaje real del sistema.
+-- =========================================================
+select 1; -- no-op, migración documental

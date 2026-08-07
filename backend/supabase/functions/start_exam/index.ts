@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
 
   const { data: license, error: licenseErr } = await admin
     .from("licenses")
-    .select("id, expires_at, status, free_full_sim_used, plans(code, includes_practicum_full)")
+    .select("id, expires_at, status, free_full_sim_used, free_half_sim_used, plans(code, includes_practicum_full)")
     .eq("user_id", user.id)
     .eq("status", "active")
     .gt("expires_at", new Date().toISOString())
@@ -76,15 +76,23 @@ Deno.serve(async (req) => {
     }
   }
 
-  if (body.mode === "full_sim") {
-    // El plan gratuito incluye UN simulacro completo de regalo, no limitado por tiempo
-    // de sesión (a diferencia de competidores con cronómetro de prueba) sino por uso.
-    if (planCode === "free" && (license as any).free_full_sim_used) {
-      return errorResponse(
-        "Ya usaste tu simulacro completo de regalo del plan gratuito. Mejora tu plan para simulacros ilimitados.",
-        403,
-      );
-    }
+  // Decisión de negocio: el plan gratuito NUNCA incluye el simulacro completo
+  // (180 preguntas/4h) -- es el mayor gancho de conversión y regalarlo entero
+  // desincentiva la compra. En su lugar, el plan gratuito incluye UN medio examen
+  // de regalo (90 preguntas/2h) para que el candidato sí pueda probar la presión
+  // real de un examen cronometrado antes de decidir si paga.
+  if (body.mode === "full_sim" && planCode === "free") {
+    return errorResponse(
+      "El plan gratuito no incluye el simulacro completo. Mejora tu plan para acceder a él.",
+      403,
+    );
+  }
+
+  if (body.mode === "half_sim" && planCode === "free" && (license as any).free_half_sim_used) {
+    return errorResponse(
+      "Ya usaste tu medio examen de regalo del plan gratuito. Mejora tu plan para simulacros ilimitados.",
+      403,
+    );
   }
 
   // Resolver unit_id -> task_ids para los modos ligados al currículo propio (no ECO directamente).
@@ -201,8 +209,8 @@ Deno.serve(async (req) => {
 
   if (examErr) return errorResponse(examErr.message, 500);
 
-  if (body.mode === "full_sim" && planCode === "free") {
-    await admin.from("licenses").update({ free_full_sim_used: true }).eq("id", license.id);
+  if (body.mode === "half_sim" && planCode === "free") {
+    await admin.from("licenses").update({ free_half_sim_used: true }).eq("id", license.id);
   }
 
   // Asignar section_number: en full_sim, 3 secciones reales sin partir clusters;
