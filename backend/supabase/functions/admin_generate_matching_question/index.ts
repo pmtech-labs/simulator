@@ -48,6 +48,11 @@ Tu tarea es generar pares TÉRMINO-DEFINICIÓN relacionados con una tarea del EC
 emparejamiento. Cada definición debe ser inequívoca (que solo pueda emparejarse con un término correcto,
 no con varios) y estar redactada en tus propias palabras, nunca copiada de ninguna fuente.
 
+TERMINOLOGÍA (obligatorio): esto se rige por PMBOK 8 (publicado ene 2026), NO por PMBOK 6/7. NUNCA nombres
+un proceso concreto al estilo PMBOK 6 (ej. "Realizar el Control Integrado de Cambios") ni uses "áreas de
+conocimiento" o "triple restricción" -- PMBOK 8 organiza el contenido en 7 dominios de desempeño y 6
+principios, sin una lista cerrada de 49 procesos con nombre.
+
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:
 {
   "stem": "Empareja cada ... con su ...",

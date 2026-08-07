@@ -1,0 +1,24 @@
+-- =========================================================
+-- 0051: Aplicación de gaps detectados en la spec de extracción del corpus ATP (200 preguntas)
+--
+-- Análisis del PO sobre un corpus de 200 preguntas PMBOK6/ECO2021, remapeado a
+-- PMBOK8/ECO2026. La mayor parte ya estaba implementada de forma independiente
+-- (dominios 33/41/26, enfoque 40/60, casos, practicum, temáticas IA/sostenibilidad/
+-- valor). Dos gaps reales corregidos en los 4 generadores que usan LLM:
+--
+-- 1. Nuevo error_type "wrong_document" (9º tipo): la spec identifica un patrón de
+--    distractor que no cubríamos ("invoca un artefacto/documento real pero no el
+--    que gobierna esta situación concreta").
+-- 2. Guardarraíl explícito de terminología PMBOK 8: nada impedía antes que el
+--    modelo, sin querer, nombrara un proceso al estilo PMBOK 6 ("Realizar el
+--    Control Integrado de Cambios") o usara "áreas de conocimiento"/"triple
+--    restricción" -- riesgo bajo (basamos todo en tareas ECO) pero no bloqueado.
+--
+-- Puntos señalados pero NO aplicados por depender de confirmación/insumos externos:
+-- - Few-shot del corpus original: la spec lo recomienda, pero no se dispone del
+--   corpus real (solo esta spec derivada) -- pendiente si el PO lo facilita.
+-- - Densidad de scenario chains: la spec sugiere 4-10% (1-2 chains/100 con 4-5
+--   sub-preguntas), pero el PO ya fijó explícitamente 20% de casos (R1) -- se
+--   mantiene el 20%, más autoritativo por ser instrucción directa y posterior.
+-- =========================================================
+select 1; -- no-op, migración documental

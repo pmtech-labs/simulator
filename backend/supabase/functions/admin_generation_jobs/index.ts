@@ -68,8 +68,18 @@ concreta y clasificable en uno de estos tipos de error:
 - "interpretation": malinterpreta la situación descrita.
 - "reading": ignora un dato o palabra decisiva del enunciado.
 - "time": implica dedicar tiempo/urgencia de forma desproporcionada (o precipitarse sin analizar).
-Asigna un "error_type" (uno de estos 8 valores exactos) a CADA opción incorrecta. La opción correcta no
+- "wrong_document": la opción invoca un artefacto/documento real del proyecto, pero NO el que gobierna
+  esta situación concreta (ej. consultar el registro de riesgos cuando lo que corresponde es el plan de
+  gestión de cambios).
+Asigna un "error_type" (uno de estos 9 valores exactos) a CADA opción incorrecta. La opción correcta no
 lleva error_type.
+
+TERMINOLOGÍA (obligatorio): esta pregunta se rige por PMBOK 8 (publicado ene 2026), NO por PMBOK 6/7.
+NUNCA nombres un proceso concreto al estilo PMBOK 6 (ej. "Realizar el Control Integrado de Cambios",
+"Desarrollar el Cronograma", "Recopilar Requisitos") ni uses "áreas de conocimiento" o "triple restricción"
+como términos -- PMBOK 8 organiza el contenido en 7 dominios de desempeño (Gobernanza, Alcance, Cronograma,
+Finanzas, Interesados, Recursos, Riesgo) y 6 principios, sin una lista cerrada de 49 procesos con nombre.
+Describe la situación por su dominio/decisión, no por el nombre de un proceso formal.
 
 CALIDAD DE LA EXPLICACIÓN (obligatoria): la explicación debe, en un solo texto fluido:
 1. Indicar cuál es la mejor respuesta y qué dato del enunciado resulta decisivo para elegirla.
@@ -130,7 +140,7 @@ indicada arriba — no hace falta que coincidan; solo asegúrate de que el conte
 (la decisión que debe tomar el candidato) esté genuinamente relacionado con "${PERFORMANCE_DOMAIN_LABELS[targetPerformanceDomain]}".${rejectionContext}`;
 }
 
-const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"];
+const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time", "wrong_document"];
 
 // Requisito del PO: "Áreas de Enfoque" (grupos de proceso clásicos), objetivo 20% cada
 // uno en el simulacro completo.

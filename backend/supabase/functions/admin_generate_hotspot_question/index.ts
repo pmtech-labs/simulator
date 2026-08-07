@@ -49,6 +49,11 @@ Tu tarea es generar el contenido para una pregunta de tipo "señala y haz clic" 
 Debes aportar SOLO texto: el escenario, las ${zonesCount} etiquetas de las zonas (cortas, 2-4 palabras cada
 una) y cuál es la zona correcta -- el diagrama en sí ya está prediseñado, tú no lo dibujas.
 
+TERMINOLOGÍA (obligatorio): esto se rige por PMBOK 8 (publicado ene 2026), NO por PMBOK 6/7. NUNCA nombres
+un proceso concreto al estilo PMBOK 6 (ej. "Desarrollar el Cronograma") ni uses "áreas de conocimiento" o
+"triple restricción" -- PMBOK 8 organiza el contenido en 7 dominios de desempeño y 6 principios, sin una
+lista cerrada de 49 procesos con nombre.
+
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:
 {
   "stem": "Escenario situacional + instrucción de hacer clic en la zona correcta",

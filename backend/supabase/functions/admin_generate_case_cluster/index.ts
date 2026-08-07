@@ -33,7 +33,7 @@ interface CreateClusterJobBody {
 }
 
 const VALID_APPROACHES = ["predictive", "agile", "hybrid"];
-const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time"];
+const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time", "wrong_document"];
 const FORBIDDEN_PATTERNS = [
   /examen\s+oficial\s+de\s+pmi/i,
   /certificaci[oó]n\s+oficial\s+garantizada/i,
@@ -94,10 +94,18 @@ FORMATO DE TEXTO (crítico): dentro de "scenario_text", "stem", "options[].text"
 uses comillas dobles ("). Usa comillas simples (') o comillas angulares (« ») si necesitas citar algo.
 
 DISEÑO DE DISTRACTORES (obligatorio en cada pregunta): cada opción incorrecta debe fallar por una razón
-clasificable en uno de estos 8 tipos: "sequence" (acción válida pero prematura), "role" (corresponde a
+clasificable en uno de estos 9 tipos: "sequence" (acción válida pero prematura), "role" (corresponde a
 otro rol), "approach" (lógica predictiva en contexto ágil o viceversa), "analysis" (se precipita sin
 analizar toda la información), "knowledge" (concepto incorrecto), "interpretation" (malinterpreta la
-situación), "reading" (ignora un dato clave del enunciado), "time" (urgencia desproporcionada).
+situación), "reading" (ignora un dato clave del enunciado), "time" (urgencia desproporcionada),
+"wrong_document" (invoca un artefacto/documento real del proyecto pero NO el que gobierna esta situación
+concreta, ej. registro de riesgos cuando corresponde el plan de gestión de cambios).
+
+TERMINOLOGÍA (obligatorio): el caso se rige por PMBOK 8 (publicado ene 2026), NO por PMBOK 6/7. NUNCA
+nombres un proceso concreto al estilo PMBOK 6 (ej. "Realizar el Control Integrado de Cambios", "Desarrollar
+el Cronograma") ni uses "áreas de conocimiento" o "triple restricción" -- PMBOK 8 organiza el contenido en
+7 dominios de desempeño y 6 principios, sin una lista cerrada de 49 procesos con nombre. Describe la
+situación por su dominio/decisión, no por el nombre de un proceso formal.
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con esta forma exacta:
 {
