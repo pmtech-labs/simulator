@@ -1,0 +1,22 @@
+-- =========================================================
+-- 0053: FIX de bug real -- submit_answer no bloqueaba secciones ya cerradas
+--
+-- Encontrado durante auditoría funcional (ago 2026): R6 promete que "una vez
+-- cierres una sección, no podrás volver a cambiar sus respuestas", pero esto
+-- solo lo bloqueaba la navegación del frontend (botones deshabilitados) -- el
+-- backend aceptaba sin más una respuesta a una pregunta de una sección ya
+-- finalizada. Verificado en vivo: fue posible responder a una pregunta de la
+-- Sección 1 después de haberla cerrado explícitamente con exam_section_control.
+--
+-- Corregido: submit_answer ahora consulta exam_sections antes de aceptar una
+-- respuesta en full_sim, y rechaza con 409 si la sección ya está 'completed'.
+--
+-- De paso, se añadió validación defensiva del body (antes, un user_answer mal
+-- formado o ausente causaba un 500 Internal Server Error sin explicación --
+-- ahora devuelve 400 con mensaje claro).
+--
+-- Verificado con 3 llamadas reales tras el despliegue: sección cerrada ->
+-- rechazada (409); sección abierta -> aceptada (200); body mal formado ->
+-- rechazado con mensaje claro (400, no 500). Datos de prueba limpiados.
+-- =========================================================
+select 1; -- no-op, migración documental

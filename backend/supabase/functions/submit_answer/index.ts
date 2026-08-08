@@ -46,6 +46,9 @@ Deno.serve(async (req) => {
   if (!user) return errorResponse("No autenticado", 401);
 
   const body: SubmitAnswerBody = await req.json();
+  if (!body.exam_id || !body.question_id || !Array.isArray(body.user_answer)) {
+    return errorResponse("Faltan campos requeridos (exam_id, question_id, user_answer como array)", 400);
+  }
   const admin = getSupabaseAdmin();
 
   const { data: exam, error: examErr } = await admin
@@ -57,6 +60,35 @@ Deno.serve(async (req) => {
   if (examErr || !exam) return errorResponse("Examen no encontrado", 404);
   if (exam.user_id !== user.id) return errorResponse("No autorizado", 403);
   if (exam.status !== "in_progress") return errorResponse("El examen ya no está en curso", 409);
+
+  // R6: "Una vez cierres una sección, no podrás volver a cambiar sus respuestas."
+  // BUG encontrado en auditoría (ago 2026): esto solo lo bloqueaba la navegación del
+  // frontend (botones deshabilitados) -- el backend aceptaba sin más una respuesta a
+  // una pregunta de una sección ya finalizada, permitiendo cambiar respuestas "cerradas"
+  // con una llamada directa a la API. Se verifica aquí el status real de la sección en
+  // exam_sections antes de aceptar la respuesta. Solo aplica a full_sim, que es el único
+  // modo con secciones reales (R5); el resto de modos no tiene este concepto.
+  if (exam.mode === "full_sim") {
+    const { data: item } = await admin
+      .from("exam_items")
+      .select("section_number")
+      .eq("exam_id", body.exam_id)
+      .eq("question_id", body.question_id)
+      .maybeSingle();
+
+    if (item?.section_number) {
+      const { data: section } = await admin
+        .from("exam_sections")
+        .select("status")
+        .eq("exam_id", body.exam_id)
+        .eq("section_number", item.section_number)
+        .maybeSingle();
+
+      if (section?.status === "completed") {
+        return errorResponse("Esta sección ya está cerrada, no se pueden modificar sus respuestas.", 409);
+      }
+    }
+  }
 
   // R6: "Si el reloj principal llega a 00:00, el examen finaliza de forma inmediata."
   // No se puntúa aquí (responsabilidad de finish_exam) -- se bloquea la respuesta y se
