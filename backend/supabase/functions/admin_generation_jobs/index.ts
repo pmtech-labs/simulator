@@ -17,6 +17,7 @@ import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
 import { buildRejectionContext } from "../_shared/rejectionContext.ts";
+import { pickStyleExamples } from "../_shared/fewShotExamples.ts";
 
 interface CreateJobBody {
   connector_id: string;
@@ -137,7 +138,7 @@ ocurre la situación, para que sea reconocible sin ambigüedad.
 DOMINIO DE DESEMPEÑO (obligatorio, no lo cambies): la pregunta debe girar principalmente en torno a
 "${PERFORMANCE_DOMAIN_LABELS[targetPerformanceDomain]}". Esta etiqueta es independiente de la tarea ECO
 indicada arriba — no hace falta que coincidan; solo asegúrate de que el contenido real de la pregunta
-(la decisión que debe tomar el candidato) esté genuinamente relacionado con "${PERFORMANCE_DOMAIN_LABELS[targetPerformanceDomain]}".${rejectionContext}`;
+(la decisión que debe tomar el candidato) esté genuinamente relacionado con "${PERFORMANCE_DOMAIN_LABELS[targetPerformanceDomain]}".${rejectionContext}${pickStyleExamples(2)}`;
 }
 
 const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time", "wrong_document"];
