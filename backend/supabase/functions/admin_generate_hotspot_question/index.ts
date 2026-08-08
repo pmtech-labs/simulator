@@ -12,6 +12,7 @@ import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
 import { buildRejectionContext } from "../_shared/rejectionContext.ts";
+import { pickStyleExamples } from "../_shared/fewShotExamples.ts";
 
 interface CreateHotspotBody {
   connector_id: string;
@@ -74,7 +75,7 @@ Enablers de referencia:
 ${enablers}${themeLine}
 
 Genera un escenario situacional relacionado con esta tarea donde el candidato deba identificar la zona
-correcta de un diagrama de clasificación.${rejectionContext}`;
+correcta de un diagrama de clasificación.${rejectionContext}${pickStyleExamples(1)}`;
 }
 
 // --- Plantillas de diagrama (SVG generado por código, coordenadas ya verificadas) ---

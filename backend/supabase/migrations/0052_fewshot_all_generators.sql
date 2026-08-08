@@ -1,0 +1,24 @@
+-- =========================================================
+-- 0052: Few-shot de estilo extendido a los 4 generadores que usan LLM
+--
+-- Antes solo admin_generation_jobs (piloto) tenía los ejemplos de estilo del
+-- corpus ATP. Extendido al resto según lo que realmente aplica a cada uno:
+--
+-- - admin_generate_case_cluster: 2 ejemplos generales (situacional con opciones
+--   A-D/A-E) -- genera preguntas hijas con la misma forma que admin_generation_jobs.
+-- - admin_generate_matching_question: 1 ejemplo DEDICADO (Q38, único ejemplo de
+--   emparejamiento del corpus) -- los ejemplos generales de situacional con
+--   distractores A-D no tienen ninguna relación con generar pares término-definición.
+-- - admin_generate_hotspot_question: 1 ejemplo general (no 2, para no sobrecargar
+--   con distractores A-D que no aplican a este formato) -- solo sirve como
+--   referencia parcial de tono narrativo para el escenario, no de estructura de
+--   respuesta.
+--
+-- fewShotExamples.ts reestructurado: GENERAL_STYLE_EXAMPLES (7, situacional) +
+-- MATCHING_STYLE_EXAMPLE (1, dedicado) en vez de un único array mixto.
+--
+-- Verificado con generación real de los 3 generadores tras el despliegue: los 3
+-- completaron sin errores. Datos de prueba limpiados (0 huérfanos en
+-- question_tags/case_clusters).
+-- =========================================================
+select 1; -- no-op, migración documental

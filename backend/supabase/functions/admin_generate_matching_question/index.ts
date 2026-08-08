@@ -12,6 +12,7 @@ import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
 import { buildRejectionContext } from "../_shared/rejectionContext.ts";
+import { matchingStyleReference } from "../_shared/fewShotExamples.ts";
 
 interface CreateMatchingBody {
   connector_id: string;
@@ -74,7 +75,7 @@ ${enablers}${themeLine}
 
 Genera EXACTAMENTE ${pairsCount} pares término-definición en español (neutro, España/LATAM) relacionados
 con conceptos, técnicas o roles de esta tarea. Cada término debe ser corto (una o dos palabras/frase corta);
-cada definición debe describir claramente y sin ambigüedad a QUÉ término corresponde.${rejectionContext}`;
+cada definición debe describir claramente y sin ambigüedad a QUÉ término corresponde.${rejectionContext}${matchingStyleReference()}`;
 }
 
 function repairUnescapedQuotes(text: string): string {

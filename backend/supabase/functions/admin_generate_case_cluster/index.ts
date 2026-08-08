@@ -21,6 +21,7 @@ import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
 import { buildRejectionContext } from "../_shared/rejectionContext.ts";
+import { pickStyleExamples } from "../_shared/fewShotExamples.ts";
 
 interface CreateClusterJobBody {
   connector_id: string;
@@ -155,7 +156,7 @@ REGLAS OBLIGATORIAS POR PREGUNTA (no las cambies, constrúyelas desde el princip
 ${perQuestionRules}
 
 No generes ninguna pregunta con la respuesta correcta en otra posición y la corrijas después -- constrúyela
-ya así desde el principio, igual que la dificultad indicada para cada una.${rejectionContext}`;
+ya así desde el principio, igual que la dificultad indicada para cada una.${rejectionContext}${pickStyleExamples(2)}`;
 }
 
 function repairUnescapedQuotes(text: string): string {

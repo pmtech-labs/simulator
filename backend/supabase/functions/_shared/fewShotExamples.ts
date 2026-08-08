@@ -14,10 +14,14 @@
 // - Excluidas preguntas con residuos de limpieza deficiente (frases en inglés pegadas,
 //   cabeceras de tabla sin traducir).
 //
-// Selección final: 8 preguntas, diversidad estructural (situacional predictivo/ágil,
-// multi-respuesta "escoge dos", emparejamiento, identificación de conocimiento puro).
+// Separadas en 2 categorías porque no todos los generadores producen el mismo tipo de
+// contenido: GENERAL_STYLE_EXAMPLES (situacional con opciones A-D/A-E, sirve para
+// admin_generation_jobs, admin_generate_case_cluster y -- de forma parcial, solo para
+// el tono del escenario -- admin_generate_hotspot_question) y MATCHING_STYLE_EXAMPLE
+// (término-definición, exclusivo de admin_generate_matching_question, cuyo contenido
+// no tiene nada que ver con distractores A-D).
 
-export const STYLE_EXAMPLES: string[] = [
+export const GENERAL_STYLE_EXAMPLES: string[] = [
   `Ejemplo de estilo (situacional, predictivo):
 "A los miembros del equipo del proyecto les preocupa que un nuevo recurso no parezca adecuado para una tarea asignada. ¿Cómo debería responder el director del proyecto a esta preocupación?"
 A. Comuníquese con la alta gerencia para discutir la posibilidad de reasignar el nuevo recurso a un proyecto diferente.
@@ -39,13 +43,6 @@ A. Renegociar el alcance con el patrocinador del proyecto después de examinar l
 B. En consulta con las partes interesadas y los miembros del equipo, identifique el producto mínimo viable necesario para el lanzamiento.
 C. Determine el índice de desempeño del cronograma (SPI) y luego eleve el riesgo del cronograma al patrocinador del proyecto.
 D. Monitorear el progreso usando un gráfico de evolución después de modificar la línea base del cronograma para cumplir con los requisitos de las partes interesadas.`,
-
-  `Ejemplo de estilo (emparejamiento, técnicas de resolución de conflictos):
-"Un miembro del equipo expresa preocupación por un problema de comportamiento del equipo durante una reunión retrospectiva. Empareja cada técnica de resolución de conflictos con la posible resolución del director de proyecto para este problema."
-- Retirar / evitar → Tan pronto como sea posible, asigne uno o ambos miembros a un proyecto o iniciativa diferente.
-- Suavizar / acomodar → Reconozca los sentimientos de los miembros del equipo con respecto al alto nivel de requisitos.
-- Compromiso / reconciliación → Reconsidere la distribución del trabajo entre todo el equipo para asegurarse de que el trabajo se distribuya de manera equitativa.
-- Colaborar / resolver problemas → Reúnase con todo el equipo para discutir la asignación de requisitos y la metodología de planificación.`,
 
   `Ejemplo de estilo (identificación de conocimiento, muestreo):
 "Un proyecto se encuentra en fase de ejecución. Sobre la base del modelo aprobado originalmente, se desarrollaron 1000 productos. El equipo del proyecto elige al azar 100 productos para evaluarlos con el plan de calidad. ¿Qué está llevando a cabo el equipo del proyecto?"
@@ -76,9 +73,26 @@ C. Forming
 D. Performing`,
 ];
 
-/** Devuelve `count` ejemplos al azar (sin repetir) para inyectar en el prompt de generación. */
+export const MATCHING_STYLE_EXAMPLE = `Ejemplo de estilo (emparejamiento, término-definición):
+"Un miembro del equipo expresa preocupación por un problema de comportamiento del equipo durante una reunión retrospectiva. Empareja cada técnica de resolución de conflictos con la posible resolución del director de proyecto para este problema."
+- Retirar / evitar → Tan pronto como sea posible, asigne uno o ambos miembros a un proyecto o iniciativa diferente.
+- Suavizar / acomodar → Reconozca los sentimientos de los miembros del equipo con respecto al alto nivel de requisitos.
+- Compromiso / reconciliación → Reconsidere la distribución del trabajo entre todo el equipo para asegurarse de que el trabajo se distribuya de manera equitativa.
+- Colaborar / resolver problemas → Reúnase con todo el equipo para discutir la asignación de requisitos y la metodología de planificación.`;
+
+/** Devuelve `count` ejemplos generales al azar (sin repetir) para inyectar en el prompt
+ * de generación situacional (admin_generation_jobs, admin_generate_case_cluster) o de
+ * escenario (admin_generate_hotspot_question, con count=1 para no sobrecargar el prompt
+ * con distractores A-D que no aplican a ese formato). */
 export function pickStyleExamples(count = 2): string {
-  const shuffled = [...STYLE_EXAMPLES].sort(() => Math.random() - 0.5);
+  const shuffled = [...GENERAL_STYLE_EXAMPLES].sort(() => Math.random() - 0.5);
   const picked = shuffled.slice(0, count);
   return `\n\nESTILO DE REFERENCIA (solo tono y construcción del enunciado -- NUNCA copies hechos, datos ni terminología PMBOK 6 de aquí, son ejemplos antiguos que ya no aplican; usa tu propio contenido siguiendo únicamente ESTE estilo narrativo):\n${picked.join("\n\n")}`;
+}
+
+/** Referencia de estilo dedicada para admin_generate_matching_question -- el único
+ * generador que produce pares término-definición, no preguntas situacionales con
+ * distractores A-D, así que los ejemplos generales no le sirven de nada. */
+export function matchingStyleReference(): string {
+  return `\n\nESTILO DE REFERENCIA (solo tono y construcción de los pares -- NUNCA copies hechos ni terminología PMBOK 6 de aquí, es un ejemplo antiguo que ya no aplica; usa tu propio contenido siguiendo únicamente ESTE estilo):\n${MATCHING_STYLE_EXAMPLE}`;
 }
