@@ -1,0 +1,31 @@
+-- =========================================================
+-- 0058: FIX -- el dashboard admin dejó de cargar "Representación por etiqueta"
+--
+-- Reportado por el usuario: "No se han podido cargar las etiquetas" en /admin
+-- (dashboard), justo después del fix de seguridad 0057.
+--
+-- Causa: el dashboard consulta v_question_stats con la SESIÓN PROPIA del
+-- admin (rol Postgres "authenticated", vía un server function del frontend,
+-- no vía service_role). Con security_invoker=true (de una migración anterior)
+-- y las columnas sensibles de `questions` ya no concedidas a "authenticated"
+-- en general (fix de seguridad de columnas en 0057), el propio admin se
+-- quedó sin poder leer stem/correct_answer/explanation a través de esta
+-- vista -- Postgres no distingue "admin autenticado" de "autenticado normal"
+-- a nivel de rol, esa distinción solo existe en is_admin() (lógica de app).
+--
+-- Fix: la vista vuelve a security_invoker=false (se salta la RLS/grants de
+-- la tabla base), pero AHORA se autoprotege con su propio WHERE interno:
+-- solo devuelve filas si is_admin(auth.uid()) es cierto, o si la llamada
+-- viene de service_role. Un usuario autenticado normal (no admin) que la
+-- consulte directamente obtiene 0 filas, nunca datos sensibles -- sin
+-- depender de los grants de columna de `questions`. anon: revocado el
+-- acceso por completo (nunca lo necesita).
+--
+-- Verificado con llamadas reales:
+-- - v_question_stats con la sesión del admin -> 200, datos completos
+--   (incluido stem, tag_codes) -- el dashboard vuelve a funcionar
+-- - v_question_stats sin autenticar -> 401 "permission denied" (sigue cerrado)
+-- - admin_questions (Edge Function, service_role) -> sigue funcionando (544)
+-- - v_task_coverage -> no afectada (solo usa columnas ya seguras: id/status/approach)
+-- =========================================================
+select 1; -- no-op, migración documental
