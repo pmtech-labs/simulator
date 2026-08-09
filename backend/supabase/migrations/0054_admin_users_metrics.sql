@@ -1,0 +1,45 @@
+-- =========================================================
+-- 0054: Panel admin — gestión de usuarios + métricas de negocio
+--
+-- Petición del PO: página típica de gestión de usuarios en /admin, y página de
+-- métricas de negocio (MRR, usuarios registrados vs compras y % conversión,
+-- filtros por semana/mes/año, ventas por producto, lo más completa posible).
+--
+-- LIMITACIÓN DE DATOS IMPORTANTE: no existe tabla de pagos/pedidos/transacciones
+-- en el modelo actual -- solo `licenses` (con stripe_subscription_id/
+-- stripe_customer_id pero SIN histórico del precio realmente pagado) y `plans`
+-- (con el precio ACTUAL). Todas las métricas de ingresos se calculan con el
+-- precio actual de cada plan, no con lo que se cobró de verdad en el momento
+-- de cada compra histórica. Si el precio de un plan cambia en el futuro, las
+-- métricas de periodos pasados se recalculan con el precio nuevo. Para una
+-- contabilidad exacta haría falta una tabla de pedidos con el precio congelado
+-- en el momento de la compra -- se deja como mejora futura en el roadmap.
+--
+-- Creado:
+-- - v_admin_users: vista con plan actual, estado de licencia, actividad
+--   (exámenes realizados) y rol admin por usuario.
+-- - admin_mrr_trend(granularity, periods): MRR normalizado a mensual por
+--   periodo (funciona correctamente con planes de distinta duración, ej. un
+--   plan de 6 meses a 54.90€ aporta 9.15€/mes de MRR mientras esté activo).
+-- - admin_signups_vs_purchases(granularity, periods): registros nuevos vs
+--   primera compra de pago por periodo (no cohortes), con % de conversión.
+-- - admin_sales_by_plan(from, to): ventas y facturación por plan en un rango.
+-- - admin_signups_vs_purchases marcada SECURITY DEFINER (con search_path fijo)
+--   porque lee auth.users directamente -- sin esto fallaba con "permission
+--   denied for table users" al no tener el rol invocador grants directos.
+--
+-- Nuevos Edge Functions:
+-- - admin_users: GET (listar/filtrar/paginar) + PATCH (extender licencia,
+--   cambiar de plan, revocar licencia, dar/quitar rol admin). Ninguna acción
+--   borra datos históricos -- todo queda marcado/trazado, nunca eliminado.
+-- - admin_metrics: GET, dashboard completo en una sola llamada (resumen +
+--   tendencia MRR + registros vs compras + ventas por plan), con filtros de
+--   granularidad (week/month/year) y rango de fechas.
+--
+-- Verificado con llamadas reales tras el despliegue: admin_users devuelve los
+-- 3 usuarios reales con su plan/actividad correctos; admin_metrics devuelve
+-- MRR=915 céntimos (9.15€/mes, exactamente 54.90€/6 meses del único usuario de
+-- pago), conversión 33.3% (1 compra de 3 registros), consistente en las 4
+-- secciones de la respuesta.
+-- =========================================================
+select 1; -- no-op, migración documental
