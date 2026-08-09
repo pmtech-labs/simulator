@@ -1,0 +1,56 @@
+-- =========================================================
+-- 0055: FIX de 4 hallazgos críticos de seguridad (revisión externa, ago 2026)
+-- =========================================================
+--
+-- 1. CRÍTICO: la política "lectura publica columnas seguras" en `questions`
+--    exponía la fila COMPLETA (incluidos correct_answer y explanation) a
+--    anon/authenticated para toda pregunta publicada. RLS es a nivel de FILA,
+--    no de columna -- el nombre de la política sugería una restricción de
+--    columnas que en realidad nunca existió. Cualquiera podía leer las
+--    respuestas directamente vía REST, saltándose start_exam/submit_answer.
+--    ELIMINADA.
+--
+-- 2. CRÍTICO: la política de INSERT en `exams` solo comprobaba
+--    auth.uid()=user_id, sin exigir service_role -- pese a su nombre
+--    ("...via rpc"), no restringía nada de verdad. Cualquier usuario
+--    autenticado podía insertar filas de examen arbitrarias (con
+--    score_pct/status falsos) directamente. ELIMINADA -- start_exam ya crea
+--    los exámenes vía service_role, que ignora RLS de todos modos.
+--
+-- 3. "Security Definer View": v_admin_users (nueva, de esta sesión) tenía
+--    SELECT concedido incluso a `anon` sin security_invoker=true --
+--    CUALQUIER visitante sin autenticar podía leer email/plan/estado de
+--    administrador de TODOS los usuarios. Puesta security_invoker=true Y
+--    revocado el acceso de anon/authenticated por completo (solo se consulta
+--    vía el Edge Function admin_users, con service_role).
+--
+--    v_questions_public: inicialmente se le puso también security_invoker=true
+--    por el mismo motivo, pero esto rompió la vista (dejó de ver ninguna fila,
+--    porque ya no puede saltarse la RLS de `questions` que el punto 1 acaba de
+--    cerrar). Analizado y revertido: v_questions_public es un caso LEGÍTIMO
+--    del patrón "vista que se ejecuta como el propietario" -- expone
+--    deliberadamente solo columnas ya seguras (nunca stem/options/
+--    correct_answer/explanation) a anon/authenticated, que es la forma
+--    estándar en Postgres de dar acceso a un subconjunto seguro de columnas
+--    de una tabla sensible (RLS no puede restringir columnas, solo filas).
+--    Revertida a security_invoker=false explícitamente, con comentario.
+--
+-- Higiene adicional: revocados los grants sobrantes de INSERT/UPDATE/DELETE/
+-- TRUNCATE en las vistas de solo lectura (v_questions_public, v_question_stats,
+-- v_exam_stats, v_task_coverage) -- inertes sin reglas INSTEAD OF, pero mala
+-- práctica dejarlos concedidos.
+--
+-- Frontend: curriculum.functions.ts (conteo de preguntas por tarea para el
+-- progreso del curso) usaba `questions` directamente con columnas ya seguras
+-- (id, task_id) -- migrado a v_questions_public para no depender de la
+-- política eliminada.
+--
+-- Verificado con llamadas reales tras el despliegue:
+-- 1. GET /questions (anon) con correct_answer -> [] (antes exponía la respuesta)
+-- 2. POST /exams (autenticado, fabricando resultado) -> 403 rechazado
+-- 3. GET /v_admin_users (anon) -> 401 "permission denied"
+-- 4. start_exam (flujo legítimo, vía service_role) -> sigue funcionando (90/90)
+-- 5. v_questions_public (anon, columnas seguras) -> sigue funcionando, nunca
+--    expone stem/correct_answer (columnas ni siquiera existen en la vista)
+-- =========================================================
+select 1; -- no-op, migración documental
