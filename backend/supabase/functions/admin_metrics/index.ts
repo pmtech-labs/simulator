@@ -40,17 +40,21 @@ Deno.serve(async (req) => {
   const salesFrom = url.searchParams.get("sales_from")
     ?? new Date(new Date(salesTo).setMonth(new Date(salesTo).getMonth() - 12)).toISOString();
 
-  const [mrrTrend, signupsVsPurchases, salesByPlan, totalUsersRes, activeLicensesRes] = await Promise.all([
+  const [mrrTrend, signupsVsPurchases, salesByPlan, allUsersRes] = await Promise.all([
     admin.rpc("admin_mrr_trend", { p_granularity: granularity, p_periods: periods }),
     admin.rpc("admin_signups_vs_purchases", { p_granularity: granularity, p_periods: periods }),
     admin.rpc("admin_sales_by_plan", { p_from: salesFrom, p_to: salesTo }),
-    admin.from("v_admin_users").select("user_id", { count: "exact", head: true }),
-    admin.from("v_admin_users").select("user_id", { count: "exact", head: true }).not("current_plan_code", "is", null).neq("current_plan_code", "free"),
+    admin.rpc("admin_list_users"),
   ]);
 
   if (mrrTrend.error) return errorResponse(mrrTrend.error.message, 500);
   if (signupsVsPurchases.error) return errorResponse(signupsVsPurchases.error.message, 500);
   if (salesByPlan.error) return errorResponse(salesByPlan.error.message, 500);
+  if (allUsersRes.error) return errorResponse(allUsersRes.error.message, 500);
+
+  const allUsers = allUsersRes.data ?? [];
+  const totalUsers = allUsers.length;
+  const activePaidLicenses = allUsers.filter((u: any) => u.current_plan_code && u.current_plan_code !== "free").length;
 
   const currentMrr = (mrrTrend.data ?? [])[mrrTrend.data!.length - 1]?.mrr_cents ?? 0;
   const totalSignups = (signupsVsPurchases.data ?? []).reduce((s: number, r: any) => s + r.signups, 0);
@@ -59,8 +63,8 @@ Deno.serve(async (req) => {
 
   return jsonResponse({
     summary: {
-      total_users: totalUsersRes.count ?? 0,
-      active_paid_licenses: activeLicensesRes.count ?? 0,
+      total_users: totalUsers,
+      active_paid_licenses: activePaidLicenses,
       current_mrr_cents: currentMrr,
       overall_conversion_pct: overallConversionPct,
     },

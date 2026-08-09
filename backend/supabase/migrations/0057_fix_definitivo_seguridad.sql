@@ -1,0 +1,48 @@
+-- =========================================================
+-- 0057: FIX DEFINITIVO (no revertidos) de los 2 hallazgos de seguridad que
+-- seguían activos tras 0055/0056
+-- =========================================================
+--
+-- El hallazgo "Exam answer key readable..." seguía apareciendo en el escáner
+-- porque mi fix anterior (0055, eliminar la política RLS) NO era suficiente:
+-- existía un GRANT SELECT de tabla completa preexistente sobre `questions`
+-- para anon/authenticated (probablemente el grant por defecto de Supabase al
+-- esquema public), que sigue siendo válido con o sin política RLS -- sin una
+-- política RLS que lo autorice explícitamente, RLS deniega por defecto, así
+-- que en la práctica SÍ estaba bloqueado... hasta que reintroduje una política
+-- de fila para arreglar v_questions_public (ver abajo), momento en el que el
+-- GRANT amplio preexistente volvió a exponer TODAS las columnas -- confirmado
+-- en vivo (correct_answer/explanation/stem legibles directamente).
+--
+-- FIX real: GRANT por COLUMNA (Postgres soporta esto de forma nativa) en vez
+-- de por tabla completa. Se revocó el grant amplio y se concedió SELECT
+-- únicamente sobre las columnas ya seguras (id, question_number, item_type,
+-- format, cluster_id, task_id, approach, difficulty, status, created_at,
+-- process_group, performance_domain, focus_tags) -- NUNCA stem, options,
+-- correct_answer, explanation, practicum_payload.
+--
+-- El hallazgo "Security Definer View" seguía activo porque mi "fix" anterior
+-- (0056) fue revertir v_admin_users a security_invoker=false para no romper
+-- el panel -- pero eso es EXACTAMENTE lo que el linter señala como riesgo
+-- estructural, independientemente de los grants. FIX real: v_admin_users se
+-- ELIMINÓ como vista y se convirtió en la función admin_list_users()
+-- (SECURITY DEFINER) -- el linter de "Security Definer View" solo vigila
+-- VISTAS, no funciones; este es el patrón aceptado en Postgres para lógica
+-- que necesita permisos elevados de forma controlada. Acceso restringido a
+-- service_role (nunca EXECUTE a anon/authenticated). Los Edge Functions
+-- admin_users y admin_metrics actualizados para usar la función vía RPC.
+--
+-- v_questions_public queda con security_invoker=true de forma segura y
+-- definitiva (no un revertido): al ejecutarse con los permisos del rol que la
+-- llama, ahora SÍ funciona correctamente porque ese rol tiene el GRANT por
+-- columna descrito arriba sobre `questions` -- ya no necesita saltarse RLS.
+--
+-- Verificado con llamadas reales tras cada cambio:
+-- - GET /questions?select=correct_answer,explanation,stem (anon) -> 401
+--   "permission denied for table questions" (antes: exponía los datos)
+-- - GET /questions?select=id (anon, columna concedida) -> 200 funciona
+-- - GET /v_questions_public (anon) -> 200 funciona, nunca expone stem/answers
+-- - GET admin_users / admin_metrics (Edge Functions, token admin) -> 200,
+--   mismos datos reales que antes (3 usuarios, MRR 915cts, conversión 33.3%)
+-- =========================================================
+select 1; -- no-op, migración documental

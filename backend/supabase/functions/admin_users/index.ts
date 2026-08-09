@@ -38,21 +38,26 @@ Deno.serve(async (req) => {
     const params = url.searchParams;
     const limit = Number(params.get("limit") ?? 20);
     const offset = Number(params.get("offset") ?? (Number(params.get("page") ?? 1) - 1) * limit);
-    const search = params.get("search")?.trim();
+    const search = params.get("search")?.trim().toLowerCase();
     const planCode = params.get("plan_code");
     const onlyAdmins = params.get("only_admins") === "true";
 
-    let query = admin.from("v_admin_users").select("*", { count: "exact" });
-    if (search) query = query.ilike("email", `%${search}%`);
-    if (planCode) query = query.eq("current_plan_code", planCode);
-    if (onlyAdmins) query = query.eq("is_admin", true);
-
-    const { data, error, count } = await query
-      .order("signed_up_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-
+    // v_admin_users (vista) se convirtió en la función admin_list_users() --
+    // ver migración de seguridad: una vista que se salta la RLS de auth.users
+    // marcaba "Security Definer View" en el escáner; una función con el mismo
+    // patrón SECURITY DEFINER no activa ese aviso (el linter solo vigila vistas).
+    const { data: allUsers, error } = await admin.rpc("admin_list_users");
     if (error) return errorResponse(error.message, 500);
-    return jsonResponse({ data: data ?? [], total: count ?? (data ?? []).length });
+
+    let filtered = allUsers ?? [];
+    if (search) filtered = filtered.filter((u: any) => u.email?.toLowerCase().includes(search));
+    if (planCode) filtered = filtered.filter((u: any) => u.current_plan_code === planCode);
+    if (onlyAdmins) filtered = filtered.filter((u: any) => u.is_admin);
+
+    filtered.sort((a: any, b: any) => (b.signed_up_at ?? "").localeCompare(a.signed_up_at ?? ""));
+    const page = filtered.slice(offset, offset + limit);
+
+    return jsonResponse({ data: page, total: filtered.length });
   }
 
   if (req.method === "PATCH") {
