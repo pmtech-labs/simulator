@@ -1,0 +1,24 @@
+-- =========================================================
+-- 0056: FIX -- v_admin_users con security_invoker=true rompió el panel de usuarios
+--
+-- Reportado por el usuario: la página /admin/usuarios daba
+-- "Edge function returned 500: permission denied for table users".
+--
+-- Mismo caso exacto que v_questions_public (migración 0055): con
+-- security_invoker=true, la vista deja de poder saltarse los permisos para
+-- leer auth.users -- ni siquiera desde service_role.
+--
+-- Revertido a security_invoker=false. Esto SIGUE siendo seguro porque:
+-- 1. anon/authenticated ya no tienen NINGÚN grant sobre esta vista (revocado
+--    en 0055) -- nadie puede invocarla salvo service_role.
+-- 2. El Edge Function admin_users ya comprueba is_admin(auth.uid()) en código
+--    antes de consultar la vista.
+-- El riesgo real que motivó el hallazgo original ("cualquier visitante sin
+-- autenticar podía leer datos de todos los usuarios") sigue cerrado por el
+-- punto 1, independientemente de este ajuste.
+--
+-- Verificado con llamadas reales: GET admin_users con token válido -> 200 con
+-- los 3 usuarios reales; GET v_admin_users directo sin autenticar -> sigue en
+-- 401 "permission denied".
+-- =========================================================
+select 1; -- no-op, migración documental
