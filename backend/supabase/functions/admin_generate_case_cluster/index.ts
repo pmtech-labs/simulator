@@ -34,7 +34,7 @@ interface CreateClusterJobBody {
 }
 
 const VALID_APPROACHES = ["predictive", "agile", "hybrid"];
-const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time", "wrong_document"];
+const VALID_ERROR_TYPES = ["knowledge", "interpretation", "sequence", "role", "approach", "reading", "analysis", "time", "wrong_document", "unsupervised_delegation"];
 const FORBIDDEN_PATTERNS = [
   /examen\s+oficial\s+de\s+pmi/i,
   /certificaci[oó]n\s+oficial\s+garantizada/i,
@@ -80,6 +80,28 @@ function normalizeApproach(value: unknown): "predictive" | "agile" | "hybrid" | 
     : null;
 }
 
+// Estructura narrativa de 5 beats confirmada en los 2 case studies oficiales del
+// PMI del lote B (ECO 2026/PMBOK 8 real): cada pregunta del cluster NO repite el
+// texto del caso -- solo referencia "el caso" y añade un dato incremental nuevo
+// (una cifra, un email, un hallazgo), siguiendo este arco. Si el cluster tiene
+// menos de 5 preguntas, se reparten proporcionalmente por el arco (nunca se usan
+// solo los primeros beats, para no perder la crisis/cierre).
+const CASE_STUDY_BEATS = [
+  "Tensión inicial de valor: desacuerdo entre interesados sobre qué significa \"éxito\" o qué se debe priorizar (velocidad/coste vs. calidad/sostenibilidad/experiencia).",
+  "Interesados nuevos o con niveles de compromiso desiguales: coordinación difícil entre partes que no estaban alineadas desde el principio.",
+  "Presión externa (mercado, competidor, dato nuevo, exigencia de mostrar avances rápido) que tensiona la necesidad de rigor/gobernanza.",
+  "Crisis operativa o impedimento crítico que exige repriorizar o resolver algo urgente sin perder de vista el objetivo de valor.",
+  "Cierre: institucionalización de mejoras/lecciones más allá del proyecto, o realización de beneficios a largo plazo -- con la duda de si se sostendrá o se revertirá.",
+];
+
+function pickBeatsForCount(count: number): string[] {
+  if (count <= 1) return [CASE_STUDY_BEATS[0]];
+  return Array.from({ length: count }, (_, i) => {
+    const beatIdx = Math.round((i * (CASE_STUDY_BEATS.length - 1)) / (count - 1));
+    return CASE_STUDY_BEATS[beatIdx];
+  });
+}
+
 function buildSystemPrompt(): string {
   return `Eres un redactor experto de exámenes de certificación de project management, familiarizado con el
 Exam Content Outline (ECO) 2026 de PMI. NUNCA cites literalmente ni parafrasees de cerca el PMBOK u otro
@@ -95,12 +117,26 @@ FORMATO DE TEXTO (crítico): dentro de "scenario_text", "stem", "options[].text"
 uses comillas dobles ("). Usa comillas simples (') o comillas angulares (« ») si necesitas citar algo.
 
 DISEÑO DE DISTRACTORES (obligatorio en cada pregunta): cada opción incorrecta debe fallar por una razón
-clasificable en uno de estos 9 tipos: "sequence" (acción válida pero prematura), "role" (corresponde a
+clasificable en uno de estos 10 tipos: "sequence" (acción válida pero prematura), "role" (corresponde a
 otro rol), "approach" (lógica predictiva en contexto ágil o viceversa), "analysis" (se precipita sin
 analizar toda la información), "knowledge" (concepto incorrecto), "interpretation" (malinterpreta la
 situación), "reading" (ignora un dato clave del enunciado), "time" (urgencia desproporcionada),
 "wrong_document" (invoca un artefacto/documento real del proyecto pero NO el que gobierna esta situación
-concreta, ej. registro de riesgos cuando corresponde el plan de gestión de cambios).
+concreta, ej. registro de riesgos cuando corresponde el plan de gestión de cambios), "unsupervised_delegation"
+(deja que un tercero -- proveedor, IA/ML, o un solo miembro del equipo -- decida o ejecute sin validación
+humana; en preguntas sobre IA la opción correcta NUNCA es "adoptar el resultado sin más").
+
+ESTILO DE LA RESPUESTA CORRECTA (observado en preguntas oficiales reales del PMI, aplícalo como tendencia
+natural, NO como regla mecánica): la opción correcta rara vez es una acción única y drástica -- tiende a
+combinar un verbo de análisis con la acción resultante ("analizar el impacto y ajustar...", "revisar los
+datos y determinar..."). Aplícalo cuando encaje de forma natural, pero varía la redacción y haz que algún
+distractor también suene razonable/compuesto -- si el estilo de redacción por sí solo delata la correcta,
+la pregunta se vuelve adivinable sin juicio profesional real.
+
+TEMAS A CONSIDERAR SI ENCAJAN (confirmados en el examen oficial real, no forzar en todo caso): gobernanza
+de decisiones con IA, institucionalización de lecciones aprendidas más allá del proyecto, juicio sobre
+cuándo NO escalar pese a presión de un interesado sénior, integridad/transparencia de los datos de reporte,
+adaptar la comunicación a audiencias con intereses divergentes, realización de beneficios post-entrega.
 
 TERMINOLOGÍA (obligatorio): el caso se rige por PMBOK 8 (publicado ene 2026), NO por PMBOK 6/7. NUNCA
 nombres un proceso concreto al estilo PMBOK 6 (ej. "Realizar el Control Integrado de Cambios", "Desarrollar
@@ -133,8 +169,9 @@ function buildUserPrompt(
   const themeLine = targetThemes.length > 0
     ? `\n\nTEMÁTICA(S) (obligatorio, todas): ${targetThemes.map((t) => THEME_INSTRUCTIONS[t]).join(" ")}`
     : "";
+  const perQuestionBeats = pickBeatsForCount(questionsCount);
   const perQuestionRules = targetLetters
-    .map((letter, idx) => `  - Pregunta ${idx + 1}: la respuesta correcta debe quedar en la posición "${letter}" (correct_answer=["${letter}"]), y su "difficulty" debe ser exactamente ${targetDifficulties[idx]}.`)
+    .map((letter, idx) => `  - Pregunta ${idx + 1} (beat narrativo: ${perQuestionBeats[idx]}): la respuesta correcta debe quedar en la posición "${letter}" (correct_answer=["${letter}"]), y su "difficulty" debe ser exactamente ${targetDifficulties[idx]}.`)
     .join("\n");
 
   return `Dominio ECO: ${task.eco_domains.name}
@@ -151,6 +188,12 @@ etapa de "${PROCESS_GROUP_LABELS[targetProcessGroup]}" del ciclo de vida del pro
 
 DOMINIO DE DESEMPEÑO (obligatorio): el caso debe girar principalmente en torno a
 "${PERFORMANCE_DOMAIN_LABELS[targetPerformanceDomain]}" (etiqueta independiente de la tarea ECO indicada).
+
+MECÁNICA DEL CLUSTER (confirmada en casos oficiales reales del PMI, obligatorio): las preguntas NO
+repiten el texto del escenario -- cada una referencia brevemente "el caso" o la situación ya planteada y
+añade UN dato incremental nuevo (una cifra, un email, un hallazgo, una declaración de un interesado) que
+hace avanzar la narrativa según el beat indicado para esa pregunta. No generes 5 preguntas independientes
+sobre el mismo texto estático -- el escenario avanza en el tiempo a medida que se suceden las preguntas.
 
 REGLAS OBLIGATORIAS POR PREGUNTA (no las cambies, constrúyelas desde el principio así):
 ${perQuestionRules}
