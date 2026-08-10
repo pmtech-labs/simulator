@@ -52,6 +52,17 @@ async function callAnthropic(connector: LlmConnector, system: string, userPrompt
 
 async function callOpenAiCompatible(connector: LlmConnector, system: string, userPrompt: string, maxTokens: number): Promise<GenerationResult> {
   const baseUrl = connector.api_base_url ?? "https://api.openai.com/v1";
+
+  // Desde los modelos de razonamiento (o1/o3/o4) y toda la familia GPT-5.x, la API de
+  // OpenAI EXIGE "max_completion_tokens" en vez de "max_tokens" -- enviar "max_tokens" a
+  // uno de estos modelos devuelve un error 400 duro ("Unsupported parameter: 'max_tokens'
+  // is not supported with this model. Use 'max_completion_tokens' instead."). Los modelos
+  // anteriores a esa familia (gpt-4o, gpt-4.1, y cualquier otro proveedor "compatible con
+  // OpenAI" que no sea realmente OpenAI) siguen esperando "max_tokens". Se detecta por el
+  // nombre del modelo en vez de asumir uno fijo, para no romper si se cambia el conector.
+  const isReasoningFamily = /^(o1|o3|o4|gpt-5|gpt-6)/i.test(connector.model_id);
+  const tokenParam = isReasoningFamily ? "max_completion_tokens" : "max_tokens";
+
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -64,7 +75,7 @@ async function callOpenAiCompatible(connector: LlmConnector, system: string, use
         { role: "system", content: system },
         { role: "user", content: userPrompt },
       ],
-      max_tokens: maxTokens,
+      [tokenParam]: maxTokens,
     }),
   });
 
@@ -84,10 +95,17 @@ async function callGoogle(connector: LlmConnector, system: string, userPrompt: s
       body: JSON.stringify({
         contents: [{ parts: [{ text: userPrompt }] }],
         systemInstruction: { parts: [{ text: system }] },
-        // thinkingBudget: 0 desactiva el razonamiento extendido — esta tarea es redacción
-        // directa, no necesita "pensar" y el thinking consumía parte de maxOutputTokens,
-        // dejando la respuesta JSON truncada a mitad.
-        generationConfig: { maxOutputTokens: Math.max(maxTokens, 3000) },
+        generationConfig: {
+          maxOutputTokens: Math.max(maxTokens, 3000),
+          // Gemini 3.x sustituyó el antiguo "thinkingBudget" (entero) por "thinkingLevel"
+          // (string: minimal/low/medium/high) -- mezclar ambos en la misma petición da un
+          // 400. El nivel por defecto de los modelos Gemini 3 Flash es "high", que puede
+          // gastar buena parte de maxOutputTokens en razonamiento interno antes de escribir
+          // el JSON final, truncándolo a mitad -- esta tarea es redacción directa siguiendo
+          // reglas ya explícitas en el prompt, no necesita razonamiento profundo, así que se
+          // baja a "low" para dejar el presupuesto de tokens para la respuesta en sí.
+          thinkingConfig: { thinkingLevel: "low" },
+        },
       }),
     },
   );
