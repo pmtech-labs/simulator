@@ -1,0 +1,45 @@
+-- =========================================================
+-- 0059: Nuevo generador -- practicum "dashboard con tensión entre dos métricas"
+-- (spec lote B, corpus oficial PMI §7.5, punto 5 pendiente de la sesión anterior)
+--
+-- No requiere cambios de esquema (usa questions.format='graphic_based', ya
+-- existente, mismo valor que usan generate_earned_value_question y
+-- generate_network_diagram_question). Migración documental.
+--
+-- Patrón implementado: un dashboard muestra 2 métricas del proyecto
+-- evolucionando en direcciones opuestas al mismo tiempo (una mejora, otra
+-- empeora -- el ejemplo más común en el corpus real es sostenibilidad vs.
+-- velocidad/coste, aunque el generador no lo fuerza, deja que el modelo elija
+-- el par de métricas que mejor encaje con la tarea ECO). La pregunta obliga a
+-- resolver la tensión con una acción compuesta, nunca a elegir un bando.
+--
+-- Reparto de roles de las 4 opciones (confirmado en 9 casos reales del PMI):
+-- - "correct": visión equilibrada/holística, sopesa corto y largo plazo.
+-- - "extreme": elimina/abandona por completo una de las dos métricas.
+-- - "passive": sigue igual porque la métrica que mejora "luce bien".
+-- - "disproportionate": escala o formaliza en exceso algo gestionable a
+--   nivel de proyecto.
+--
+-- Mismo principio de seguridad que el resto de generadores deterministas: la
+-- IA solo aporta texto y rangos numéricos (start_value/end_value por
+-- métrica) -- el código genera la serie completa con jitter real y dibuja el
+-- SVG del dashboard (2 paneles de línea), nunca se confía en que el modelo
+-- construya el gráfico o "invente" una serie completa coherente.
+--
+-- Validación de calidad añadida (no solo estructural): las 2 métricas deben
+-- moverse en sentidos porcentuales OPUESTOS y con un cambio mínimo del 5% --
+-- si no, se descarta el ítem por no representar una tensión real que
+-- resolver (protege contra el modelo generando 2 métricas que en realidad no
+-- están en tensión).
+--
+-- Verificado con una generación real de 4 preguntas: 2/4 generadas (2
+-- rechazadas correctamente por la validación de tensión numérica, la
+-- protección funciona). Contenido de las 2 generadas revisado manualmente --
+-- sigue el patrón de roles exactamente, y la respuesta correcta usa
+-- naturalmente el estilo de "verbo compuesto" del punto 2 de la sesión
+-- anterior sin habérselo pedido explícitamente en este prompt (coherencia
+-- entre generadores). SVG verificado (3151 caracteres, series con jitter real
+-- monótonas hacia el valor final en direcciones opuestas). Datos de prueba
+-- limpiados.
+-- =========================================================
+select 1; -- no-op, migración documental
