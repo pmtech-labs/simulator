@@ -1,0 +1,33 @@
+-- =========================================================
+-- 0062: Few-shot ampliado con el corpus completo del lote A (200 preguntas)
+--
+-- Punto pendiente del roadmap: solo se usaban 8-9 preguntas curadas a mano
+-- de las 200 disponibles. Ampliado a 23 ejemplos totales (22 en
+-- GENERAL_STYLE_EXAMPLES + 1 dedicado de matching), aplicando el mismo
+-- filtro de limpieza ya usado (sin PMBOK 6, sin residuos de traducción) más
+-- dos criterios nuevos:
+-- - Excluidas también preguntas con "activos de los procesos organizativos"
+--   (término de ITTO de PMBOK 6, por prudencia aunque no estaba en la lista
+--   explícita de prohibidos).
+-- - Excluidos duplicados casi idénticos del propio corpus (el banco ATP
+--   repite la misma pregunta reformulada varias veces con distinto redactado
+--   -- se eligió una sola variante representativa de cada patrón).
+--
+-- 15 ejemplos nuevos cubriendo tipos estructurales que antes no estaban
+-- representados: ágil (plan de interesados, dependencia entre equipos),
+-- identificación de documento, interpretación de valor ganado (cálculo),
+-- priorización de riesgos (tabla probabilidad/impacto), respuesta a riesgos
+-- (opciones de dos pasos), tipo de contrato, estimación de tres puntos
+-- (PERT, cálculo), secuencia tras cierre, benchmarking, coste de la calidad,
+-- relación entre actividades (FS/FF/SS/SF), selección de ciclo de vida
+-- (opción compuesta).
+--
+-- No aumenta el tamaño de cada prompt individual: pickStyleExamples() sigue
+-- muestreando solo 1-2 ejemplos por llamada, solo crece el POOL del que
+-- muestrea (más diversidad real a lo largo de muchas generaciones).
+--
+-- Desplegado en los 4 generadores. Verificado con generaciones reales tras
+-- el despliegue: los 4 funcionan sin errores (admin_generation_jobs 3/3,
+-- case_cluster 1/1, matching 1/1, hotspot 1/1). Datos de prueba limpiados.
+-- =========================================================
+select 1; -- no-op, migración documental
