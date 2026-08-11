@@ -1,0 +1,21 @@
+-- =========================================================
+-- 0060: expire_licenses + pg_cron -- desactivación automática de licencias vencidas
+--
+-- CORRECCIÓN a la auditoría anterior (informe de avance): esto NO era un
+-- hueco de seguridad activo -- start_exam ya comprueba expires_at > now()
+-- directamente en cada llamada, no solo status='active', así que una
+-- licencia vencida ya NO daba acceso aunque este job no existiera. Lo que
+-- aporta esto es higiene de datos (que `status` refleje la realidad) y una
+-- capa de protección por si algún código futuro solo comprobara `status`
+-- sin `expires_at` (patrón de bug común).
+--
+-- Instalada la extensión pg_cron (no estaba activada). Función
+-- expire_licenses() marca 'expired' toda licencia 'active' cuya expires_at
+-- ya pasó. Programada vía cron.schedule cada hora ('expire-licenses-hourly').
+--
+-- Verificado con una llamada real: creada una licencia de prueba con
+-- expires_at en el pasado (usuario demo, plan básico, sin tocar su licencia
+-- real activa) -> llamada directa a expire_licenses() -> status pasó de
+-- 'active' a 'expired' correctamente. Dato de prueba limpiado.
+-- =========================================================
+select 1; -- no-op, migración documental
