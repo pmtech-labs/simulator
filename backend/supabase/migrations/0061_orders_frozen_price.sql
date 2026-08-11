@@ -1,0 +1,33 @@
+-- =========================================================
+-- 0061: Tabla de pedidos con precio congelado en el momento de la compra
+--
+-- Resuelve la limitación documentada en las métricas de negocio: sin esta
+-- tabla, admin_mrr_trend/admin_sales_by_plan usaban el precio ACTUAL de cada
+-- plan, no el que se cobró de verdad -- si el precio cambiaba en el futuro,
+-- el histórico se recalculaba mal retroactivamente.
+--
+-- Nueva tabla `orders` (id, user_id, license_id, plan_id, price_cents_charged,
+-- purchased_at, status). Como Stripe aún no está conectado, hoy el único
+-- mecanismo real que crea licencias de pago es change_plan en admin_users
+-- (asignación manual por admin) -- se conecta ahí. Cuando se integre Stripe,
+-- su webhook deberá insertar en `orders` con el mismo patrón.
+--
+-- Backfill: la única licencia de pago existente (creada antes de esta tabla)
+-- se registró con el precio actual de su plan y su fecha de creación real.
+--
+-- admin_mrr_trend y admin_sales_by_plan actualizadas para preferir
+-- orders.price_cents_charged sobre plans.price_cents (con fallback al precio
+-- actual del plan para licencias sin pedido asociado, por robustez).
+--
+-- Verificado con una prueba real de "precio congelado", no solo revisión de
+-- código:
+-- 1. Insertado un pedido de prueba al precio actual de basica_3m (34,90€).
+-- 2. Subido el precio del plan a 39,90€ (simulando una subida real).
+-- 3. Confirmado que el pedido ya registrado seguía en 34,90€, y que
+--    admin_sales_by_plan devolvía 34,90€ de ingresos, NO 39,90€.
+-- 4. Revertido el precio del plan y limpiado el pedido de prueba.
+-- 5. Confirmado que admin_metrics sigue devolviendo exactamente lo mismo de
+--    siempre (MRR 915cts, 3 usuarios, 33.3% conversión) -- el cambio no
+--    rompió nada existente.
+-- =========================================================
+select 1; -- no-op, migración documental

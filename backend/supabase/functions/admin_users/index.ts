@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
 
     if (body.action === "change_plan") {
       if (!body.plan_code) return errorResponse("Falta plan_code", 400);
-      const { data: plan, error: planErr } = await admin.from("plans").select("id, duration_months").eq("code", body.plan_code).single();
+      const { data: plan, error: planErr } = await admin.from("plans").select("id, duration_months, price_cents, code").eq("code", body.plan_code).single();
       if (planErr || !plan) return errorResponse("Plan no encontrado", 404);
 
       // La licencia activa anterior (si existe) se marca 'superseded', nunca se borra.
@@ -110,6 +110,24 @@ Deno.serve(async (req) => {
         .select()
         .single();
       if (insertErr) return errorResponse(insertErr.message, 500);
+
+      // Registro del precio REALMENTE aplicado, congelado en este momento --
+      // no depende de que plans.price_cents no cambie después. Solo para
+      // planes de pago (el gratuito no genera pedido). Hoy este es el único
+      // mecanismo real de creación de licencias de pago (sin Stripe aún) --
+      // cuando se conecte Stripe, su webhook debe insertar en `orders` con
+      // este mismo patrón.
+      if (plan.code !== "free") {
+        await admin.from("orders").insert({
+          user_id: body.user_id,
+          license_id: newLicense.id,
+          plan_id: plan.id,
+          price_cents_charged: plan.price_cents,
+          purchased_at: startsAt.toISOString(),
+          status: "completed",
+        });
+      }
+
       return jsonResponse({ ok: true, license: newLicense });
     }
 
