@@ -86,15 +86,17 @@ como términos -- PMBOK 8 organiza el contenido en 7 dominios de desempeño (Gob
 Finanzas, Interesados, Recursos, Riesgo) y 6 principios, sin una lista cerrada de 49 procesos con nombre.
 Describe la situación por su dominio/decisión, no por el nombre de un proceso formal.
 
-ESTILO DE LA RESPUESTA CORRECTA (observado en preguntas oficiales reales del PMI, aplícalo como tendencia
-natural, NO como regla mecánica): en el ECO 2026 la opción correcta rara vez es una acción única y
-drástica -- tiende a combinar un verbo de análisis con la acción resultante ("analizar el impacto y
-ajustar...", "revisar los datos y determinar...", "evaluar la causa junto con el interesado correcto antes
-de..."). Aplica este patrón cuando encaje de forma natural en la situación, pero NO lo conviertas en una
-pista mecánica: varía la redacción, y haz que al menos algún distractor también suene razonable o
-"compuesto" -- si la única opción con verbo compuesto es siempre la correcta, la pregunta se vuelve
-adivinable por estilo de redacción en vez de por juicio profesional real, lo cual es justo lo que hay que
-evitar.
+ESTILO DE LA RESPUESTA CORRECTA (verificado contra la clave real de 152 preguntas oficiales del PMI con
+respuesta confirmada, agosto 2026 -- NO uses esto como regla mecánica): el patrón de "verbo analítico +
+acción" (analizar/evaluar/revisar/reunirse/consultar + acción resultante) aparece en la correcta en
+aproximadamente el 40% de los casos reales -- es una tendencia real pero MINORITARIA, no la norma. El rasgo
+que sí es consistente en casi todas las correctas es más amplio: una acción medida y profesional (nunca
+drástica, nunca precipitada, nunca delega sin supervisión), que puede estar redactada como verbo compuesto
+("analizar el impacto y ajustar...") o como un único verbo igualmente medido ("perfeccionar la lista de
+trabajo pendiente", "facilitar un debate estructurado"). NO fuerces el patrón de verbo compuesto en cada
+pregunta -- varía la redacción libremente, y evita que la única opción con verbo compuesto sea siempre la
+correcta, porque eso vuelve la pregunta adivinable por estilo de redacción en vez de por juicio profesional
+real.
 
 TEMAS A CONSIDERAR SI ENCAJAN CON LA TAREA (confirmados en el examen oficial real, no forzar en toda
 pregunta): gobernanza de decisiones con IA (validar el resultado con juicio humano, nunca adoptarlo sin
@@ -119,16 +121,20 @@ function buildUserPrompt(task: any, approach: string, format: string, targetDiff
   const themeLine = targetThemes.length > 0
     ? `\n\nTEMÁTICA(S) (obligatorio, todas las indicadas): ${targetThemes.map((t) => THEME_INSTRUCTIONS[t]).join(" ")}`
     : "";
-  // Requisito del PO: mc_multi tiene una forma EXACTA obligatoria -- 5 opciones
-  // (A-E), de las cuales EXACTAMENTE 2 son correctas. Solo se considera acertada si
-  // el candidato marca las 2 correctas (no cuenta acertar solo una).
+  // Requisito del PO + confirmado con clave real del lote B (feedback de 180
+  // preguntas oficiales, ago 2026): mc_multi NO es siempre "elige 2" -- el corpus
+  // real tiene N=2 en 15/23 casos y N=3 en 8/23 (Q161 es N=3: "Seleccione 3
+  // opciones"). Generalizado para aceptar cualquier N, siempre sobre 5 opciones.
   const answerPositionBlock = targetMultiLetters
     ? `POSICIÓN DE LAS RESPUESTAS CORRECTAS (obligatorio, no lo cambies): debes generar EXACTAMENTE 5
-opciones (A, B, C, D, E). Las opciones correctas deben ser EXACTAMENTE "${targetMultiLetters[0]}" y
-"${targetMultiLetters[1]}" -- es decir, "correct_answer" debe ser exactamente ["${targetMultiLetters[0]}",
-"${targetMultiLetters[1]}"]. Las otras 3 opciones son distractores individuales, cada uno incorrecto por
+opciones (A, B, C, D, E). Las opciones correctas deben ser EXACTAMENTE ${targetMultiLetters.map((l) => `"${l}"`).join(", ")}
+-- es decir, "correct_answer" debe ser exactamente [${targetMultiLetters.map((l) => `"${l}"`).join(", ")}].
+Las otras ${5 - targetMultiLetters.length} opciones son distractores individuales, cada uno incorrecto por
 sí solo aunque pueda parecer razonable. Esta pregunta solo se considera acertada si el candidato marca
-las 2 opciones correctas, ninguna más y ninguna menos -- constrúyela así desde el principio.`
+EXACTAMENTE esas ${targetMultiLetters.length} opciones, ninguna más y ninguna menos -- constrúyela así
+desde el principio. El enunciado debe indicar cuántas opciones elegir (ej. "Seleccione ${targetMultiLetters.length}
+opciones"), o usar "Seleccione todas las opciones que correspondan" si tiene más sentido narrativo, siempre
+que EXACTAMENTE ${targetMultiLetters.length} sean correctas.`
     : `POSICIÓN DE LA RESPUESTA CORRECTA (obligatorio, no lo cambies): la opción correcta debe quedar en la
 posición "${targetLetter}". Es decir, "correct_answer" debe ser exactamente ["${targetLetter}"], y el
 resto de posiciones (A, B, C, D excluyendo "${targetLetter}") deben ser los distractores. Construye tu
@@ -266,17 +272,17 @@ function validateDraft(draft: any, targetLetter: string, targetDifficulty: numbe
   if (!draft.stem || draft.stem.length < 20) issues.push("Enunciado demasiado corto");
   if (!Array.isArray(draft.options) || draft.options.length < 2) issues.push("Menos de 2 opciones");
   if (targetMultiLetters) {
-    // Requisito del PO: mc_multi exige EXACTAMENTE 5 opciones y EXACTAMENTE 2
-    // correctas, las 2 indicadas -- ni más ni menos, sin excepción.
+    // Confirmado con clave real del lote B: mc_multi exige EXACTAMENTE 5 opciones y
+    // EXACTAMENTE N correctas (N=2 o N=3 según lo pedido) -- ni más ni menos.
     if (!Array.isArray(draft.options) || draft.options.length !== 5) {
       issues.push(`mc_multi debe tener exactamente 5 opciones (llegaron ${draft.options?.length ?? 0})`);
     }
-    if (!Array.isArray(draft.correct_answer) || draft.correct_answer.length !== 2) {
-      issues.push(`mc_multi debe tener exactamente 2 respuestas correctas (llegaron ${draft.correct_answer?.length ?? 0})`);
+    if (!Array.isArray(draft.correct_answer) || draft.correct_answer.length !== targetMultiLetters.length) {
+      issues.push(`mc_multi debe tener exactamente ${targetMultiLetters.length} respuestas correctas (llegaron ${draft.correct_answer?.length ?? 0})`);
     } else {
       const got = [...draft.correct_answer].sort();
       const want = [...targetMultiLetters].sort();
-      if (got[0] !== want[0] || got[1] !== want[1]) {
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
         issues.push(`Las respuestas correctas de mc_multi no coinciden con las solicitadas (pedidas: ${want.join(",")}, recibidas: ${got.join(",")})`);
       }
     }
@@ -426,13 +432,23 @@ Deno.serve(async (req) => {
     // de la posición de la respuesta correcta a lo largo del lote (ver bug histórico:
     // el modelo copiaba literalmente el "B" del ejemplo del prompt casi siempre).
     const targetLetter = ["A", "B", "C", "D"][i % 4];
-    // Requisito del PO: mc_multi exige 5 opciones (A-E) con exactamente 2 correctas.
-    // Rotación por las 10 combinaciones posibles de 2 entre 5, para variar la posición.
+    // Confirmado con clave real del lote B (feedback de 180 preguntas oficiales):
+    // mc_multi NO es siempre "elige 2" -- el corpus real tiene N=2 en 15/23 casos
+    // (≈65%) y N=3 en 8/23 (≈35%), nunca más de 3. Se elige N con esa proporción real,
+    // y luego se rota entre TODAS las combinaciones posibles de N sobre 5 opciones
+    // (10 combinaciones para N=2, otras 10 para N=3) para variar la posición.
     const MC_MULTI_PAIRS = [
       ["A", "B"], ["A", "C"], ["A", "D"], ["A", "E"], ["B", "C"],
       ["B", "D"], ["B", "E"], ["C", "D"], ["C", "E"], ["D", "E"],
     ];
-    const targetMultiLetters = format === "mc_multi" ? MC_MULTI_PAIRS[i % MC_MULTI_PAIRS.length] : null;
+    const MC_MULTI_TRIPLES = [
+      ["A", "B", "C"], ["A", "B", "D"], ["A", "B", "E"], ["A", "C", "D"], ["A", "C", "E"],
+      ["A", "D", "E"], ["B", "C", "D"], ["B", "C", "E"], ["B", "D", "E"], ["C", "D", "E"],
+    ];
+    const useTriple = Math.random() < 0.35;
+    const targetMultiLetters = format === "mc_multi"
+      ? (useTriple ? MC_MULTI_TRIPLES[i % MC_MULTI_TRIPLES.length] : MC_MULTI_PAIRS[i % MC_MULTI_PAIRS.length])
+      : null;
     // Dificultad objetivo aleatoria dentro del rango pedido, fijada ANTES de generar
     // (mismo motivo que targetLetter: el modelo copiaba literalmente el "3" de ejemplo
     // del prompt en vez de variar la dificultad — confirmado con datos reales: 44/44
