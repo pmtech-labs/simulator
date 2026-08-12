@@ -88,3 +88,34 @@ N=3, todas válidas (6/6, sin fallos). Confirma que la mezcla funciona.
 - El rationale oficial completo (no solo la clave) podría añadirse como capa de
   explicación de referencia en el banco -- mejora pedagógica mencionada en el
   spec §10, no implementada aún por alcance/tiempo de esta sesión.
+
+## Parte 3 — Auditoría del banco completo contra las nuevas especificaciones
+
+Tras el hallazgo del punto anterior, se auditaron las 544 preguntas existentes
+contra las reglas duras y contra el hallazgo del verbo compuesto.
+
+### Reglas duras: sin problemas
+- `error_type` válido en los 1390 distractores de mc_single/mc_multi: 0 problemas.
+- Terminología PMBOK 6 prohibida: 0 violaciones reales (1 falso positivo revisado
+  a mano -- "recopilar requisitos de calidad" en prosa descriptiva, no cita el
+  nombre formal del proceso PMBOK 6).
+- Estructura mc_multi (5 opciones): 65/65 correctas.
+
+### Hallazgo: sobreuso real del patrón de verbo compuesto en el banco existente
+Confirmado con la misma heurística usada para el lote B, aplicada a nuestras 406
+preguntas mc_single existentes:
+- Correcta usa verbo analítico/colaborativo: **62.8%** (banco propio) vs. **42%**
+  (lote B real).
+- Correcta es la ÚNICA opción con ese patrón (potencialmente adivinable sin
+  razonar): **42.4% / 172 preguntas** (banco propio) vs. **21.7%** (lote B real).
+
+Efecto directo del prompt original (ya corregido en esta sesión, solo hacia
+delante -- ver Parte 2).
+
+### Decisión (usuario, agosto 2026): dejar las 172 preguntas tal cual
+No se borran ni regeneran. Motivo: quedan ~2500 preguntas más por generar para
+completar el banco objetivo (~3044 total). Con el prompt ya corregido, el nuevo
+volumen debería acercarse al ~42% real, diluyendo la proporción actual del
+62.8% hasta que las 172 señaladas representen solo ~5.7% del banco final --
+proporción razonable, no justifica descartar contenido pedagógicamente válido
+solo por ser potencialmente adivinable en el peor caso.
