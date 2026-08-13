@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
 
   const { data: license, error: licenseErr } = await admin
     .from("licenses")
-    .select("id, expires_at, status, free_full_sim_used, free_half_sim_used, plans(code, includes_practicum_full)")
+    .select("id, expires_at, status, free_full_sim_used, free_half_sim_used, plans(code, includes_practicum_full, includes_analytics)")
     .eq("user_id", user.id)
     .eq("status", "active")
     .gt("expires_at", new Date().toISOString())
@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
   if (!license) return errorResponse("No tienes una licencia activa vigente", 403);
 
   const includesPracticumFull = (license as any).plans?.includes_practicum_full ?? false;
+  const includesAnalytics = (license as any).plans?.includes_analytics ?? false;
   const planCode = (license as any).plans?.code;
 
   if (body.mode === "full_sim" || body.mode === "half_sim") {
@@ -168,11 +169,38 @@ Deno.serve(async (req) => {
   if (poolErr) return errorResponse(poolErr.message, 500);
   if (!pool || pool.length === 0) return errorResponse("No hay preguntas disponibles para estos filtros", 404);
 
+  // Motor adaptativo (Premium, includes_analytics=true): en los modos de PRÁCTICA
+  // (nunca en full_sim/half_sim, que deben preservar el reparto oficial ECO 2026
+  // exacto -- decisión explícita del PO) se prioriza mostrar más preguntas de las
+  // tareas ECO donde el usuario tiene menor dominio, usando el mastery real de
+  // user_task_mastery. Las tareas nunca intentadas se tratan como dominio 0 (máxima
+  // prioridad) -- son un hueco de información tan relevante como una tarea débil
+  // confirmada. Nunca EXCLUYE ninguna tarea, solo la hace más o menos probable --
+  // así el usuario sigue viendo repaso de lo que ya domina, solo que con menos
+  // frecuencia relativa.
+  let taskWeights: Record<string, number> | null = null;
+  if (includesAnalytics && body.mode !== "full_sim" && body.mode !== "half_sim") {
+    const { data: masteryRows } = await admin
+      .from("user_task_mastery")
+      .select("task_id, mastery_pct")
+      .eq("user_id", user.id);
+    const masteryByTask = new Map<string, number>((masteryRows ?? []).map((r: any) => [r.task_id, Number(r.mastery_pct ?? 0)]));
+    const taskIdsInPool = [...new Set(pool.map((q: any) => q.task_id).filter(Boolean))] as string[];
+    taskWeights = {};
+    for (const taskId of taskIdsInPool) {
+      const mastery = masteryByTask.has(taskId) ? (masteryByTask.get(taskId) as number) : 0;
+      // Piso de 0.15 -- una tarea ya dominada al 100% sigue teniendo ~15% de la
+      // probabilidad relativa de una tarea a 0%, nunca desaparece del todo (repaso
+      // de mantenimiento), pero se prioriza claramente lo débil.
+      taskWeights[taskId] = Math.max(0.15, 1 - mastery / 100);
+    }
+  }
+
   const selected = body.mode === "full_sim"
     ? selectFullSim(pool)
     : body.mode === "half_sim"
     ? selectHalfSim(pool)
-    : selectDrill(pool, body.question_count ?? 50);
+    : selectDrill(pool, body.question_count ?? 50, taskWeights);
 
   // Averiguar qué ítems ya respondió el usuario en exámenes anteriores (para new_items_count
   // en finish_exam más adelante; aquí solo lo calculamos para dejarlo en config informativo).
@@ -552,8 +580,23 @@ function consolidateCasesFirst(items: any[]): any[] {
   const caseBlocks = blocks.filter((b) => b[0].cluster_id);
   const nonCaseBlocks = blocks.filter((b) => !b[0].cluster_id);
   return [...caseBlocks.flat(), ...shuffle(nonCaseBlocks.flat())];
-}function selectDrill(pool: any[], count: number) {
-  return groupClusters(shuffle(pool)).slice(0, count);
+}function selectDrill(pool: any[], count: number, taskWeights: Record<string, number> | null) {
+  const ordered = taskWeights
+    ? weightedShuffle(pool, (item: any) => taskWeights[item.task_id] ?? 1)
+    : shuffle(pool);
+  return groupClusters(ordered).slice(0, count);
+}
+
+// Algoritmo de Efraimidis-Spirakis para muestreo ponderado sin reemplazo: cada
+// ítem recibe una clave aleatoria elevada a 1/peso, y se ordena de mayor a menor.
+// Con peso uniforme (todos = 1) degenera exactamente en un shuffle uniforme normal
+// -- por eso selectDrill puede usar esta misma función sin cambiar el
+// comportamiento existente cuando no hay pesos (planes sin analítica).
+function weightedShuffle<T>(arr: T[], weightFn: (item: T) => number): T[] {
+  return arr
+    .map((item) => ({ item, key: Math.pow(Math.random(), 1 / Math.max(weightFn(item), 0.0001)) }))
+    .sort((a, b) => b.key - a.key)
+    .map((x) => x.item);
 }
 
 // Devuelve la lista ordenada respetando que los ítems de un mismo cluster queden consecutivos.
