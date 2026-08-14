@@ -13,6 +13,7 @@ import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
 import { buildRejectionContext } from "../_shared/rejectionContext.ts";
 import { matchingStyleReference } from "../_shared/fewShotExamples.ts";
+import { terminologiaCompacta } from "../_shared/terminologyDictionary.ts";
 
 interface CreateMatchingBody {
   connector_id: string;
@@ -53,6 +54,7 @@ TERMINOLOGÍA (obligatorio): esto se rige por PMBOK 8 (publicado ene 2026), NO p
 un proceso concreto al estilo PMBOK 6 (ej. "Realizar el Control Integrado de Cambios") ni uses "áreas de
 conocimiento" o "triple restricción" -- PMBOK 8 organiza el contenido en 7 dominios de desempeño y 6
 principios, sin una lista cerrada de 49 procesos con nombre.
+${terminologiaCompacta()}
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:
 {

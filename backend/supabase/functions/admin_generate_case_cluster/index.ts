@@ -22,6 +22,7 @@ import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
 import { buildRejectionContext } from "../_shared/rejectionContext.ts";
 import { pickStyleExamples, caseClusterReference } from "../_shared/fewShotExamples.ts";
+import { terminologiaObligatoria } from "../_shared/terminologyDictionary.ts";
 
 interface CreateClusterJobBody {
   connector_id: string;
@@ -143,6 +144,7 @@ nombres un proceso concreto al estilo PMBOK 6 (ej. "Realizar el Control Integrad
 el Cronograma") ni uses "áreas de conocimiento" o "triple restricción" -- PMBOK 8 organiza el contenido en
 7 dominios de desempeño y 6 principios, sin una lista cerrada de 49 procesos con nombre. Describe la
 situación por su dominio/decisión, no por el nombre de un proceso formal.
+${terminologiaObligatoria()}
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con esta forma exacta:
 {

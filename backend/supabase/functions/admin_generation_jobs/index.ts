@@ -18,6 +18,7 @@ import { callLlm } from "../_shared/llmProviders.ts";
 import { tagRowsFor } from "../_shared/tagMapping.ts";
 import { buildRejectionContext } from "../_shared/rejectionContext.ts";
 import { pickStyleExamples } from "../_shared/fewShotExamples.ts";
+import { terminologiaObligatoria } from "../_shared/terminologyDictionary.ts";
 
 interface CreateJobBody {
   connector_id: string;
@@ -110,9 +111,12 @@ CALIDAD DE LA EXPLICACIÓN (obligatoria): la explicación debe, en un solo texto
 2. Explicar el razonamiento que conduce a la solución (qué principio profesional se evalúa).
 3. Explicar por qué CADA una de las demás opciones es menos adecuada, conectándolo con su error_type
    (ej. "es una acción válida pero prematura" para sequence, "correspondería al patrocinador" para role).
+${terminologiaObligatoria()}
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con esta forma exacta:
-{"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":<entero 1-5 según se te indique, NUNCA un valor fijo por defecto>}`;
+{"stem":"...","options":[{"id":"A","text":"...","error_type":"sequence"},{"id":"B","text":"..."},{"id":"C","text":"...","error_type":"role"},{"id":"D","text":"...","error_type":"analysis"}],"correct_answer":["B"],"explanation":"...","difficulty":<entero 1-5 según se te indique, NUNCA un valor fijo por defecto>}
+
+Recuerda: responde SOLO el JSON, nada de texto antes o después, aunque el bloque de arriba sea largo.`;
 }
 
 function buildUserPrompt(task: any, approach: string, format: string, targetDifficulty: number, focusTags: string[], targetLetter: string, targetProcessGroup: string, targetThemes: Theme[], targetPerformanceDomain: string, targetMultiLetters: string[] | null, rejectionContext: string) {
