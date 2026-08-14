@@ -6,8 +6,13 @@
 // una licencia activa (de cualquier plan), no hace nada y lo informa.
 //
 // El plan free da acceso a práctica por dominio/lección/acumulativo sin límite de
-// tiempo, y a UN simulacro completo (full_sim) de regalo -- controlado por
-// licenses.free_full_sim_used, no por un cronómetro de sesión.
+// tiempo, y a UN medio examen (half_sim, 90 preguntas/2h) de regalo -- controlado por
+// licenses.free_half_sim_used, no por un cronómetro de sesión. El simulacro completo
+// (full_sim, 180 preguntas) NUNCA está incluido en este plan, ni una vez -- ver el
+// bloqueo explícito en start_exam (decisión de negocio: es el mayor gancho de
+// conversión y regalarlo entero desincentiva la compra). La columna
+// free_full_sim_used es vestigial (de un diseño anterior) y no se usa en ningún
+// punto de la lógica real -- no confundir con free_half_sim_used, que sí es real.
 
 import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
@@ -53,7 +58,7 @@ Deno.serve(async (req) => {
       plan_id: freePlan.id,
       status: "active",
       expires_at: expiresAt.toISOString(),
-      free_full_sim_used: false,
+      free_half_sim_used: false,
     })
     .select("id, expires_at")
     .single();
