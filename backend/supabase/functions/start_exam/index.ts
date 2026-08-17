@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
 
   const { data: license, error: licenseErr } = await admin
     .from("licenses")
-    .select("id, expires_at, status, free_full_sim_used, free_half_sim_used, plans(code, includes_practicum_full, includes_analytics)")
+    .select("id, expires_at, status, free_full_sim_used, free_half_sim_used, plans(code, includes_practicum_full, includes_analytics, full_sim_limit)")
     .eq("user_id", user.id)
     .eq("status", "active")
     .gt("expires_at", new Date().toISOString())
@@ -94,6 +94,31 @@ Deno.serve(async (req) => {
       "Ya usaste tu medio examen de regalo del plan gratuito. Mejora tu plan para simulacros ilimitados.",
       403,
     );
+  }
+
+  // Límite de simulacros completos por plan de pago (hallazgo de auditoría: la
+  // columna plans.full_sim_limit existía y tenía datos correctos desde una
+  // migración anterior, pero nunca se llegó a comprobar aquí -- el límite era
+  // puramente texto de marketing sin aplicación real, igual que pasó antes con
+  // el motor adaptativo). NULL = ilimitado (plan de 6 meses). Se cuentan los
+  // simulacros completos ya INICIADOS con esta misma licencia (mismo criterio
+  // que free_half_sim_used, que también marca en el arranque, no en la
+  // finalización) -- cada licencia nueva (cada compra) tiene su propio cupo,
+  // ya que el contador se ata a license_id, no al usuario.
+  const fullSimLimit = (license as any).plans?.full_sim_limit ?? null;
+  if (body.mode === "full_sim" && fullSimLimit !== null) {
+    const { count: fullSimCount, error: countErr } = await admin
+      .from("exams")
+      .select("id", { count: "exact", head: true })
+      .eq("license_id", license.id)
+      .eq("mode", "full_sim");
+    if (countErr) return errorResponse(countErr.message, 500);
+    if ((fullSimCount ?? 0) >= fullSimLimit) {
+      return errorResponse(
+        `Ya usaste los ${fullSimLimit} simulacros completos incluidos en tu plan actual. Mejora tu plan para simulacros ilimitados.`,
+        403,
+      );
+    }
   }
 
   // Resolver unit_id -> task_ids para los modos ligados al currículo propio (no ECO directamente).
