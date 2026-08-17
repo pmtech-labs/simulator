@@ -1,0 +1,38 @@
+-- Seguimiento de 0062_security_fix_questions_column_grants_and_view_definer.sql
+-- (agosto 2026) -- la excepción documentada allí (v_question_stats con
+-- security_invoker=false) fue revertida DOS VECES por intentos externos
+-- (Lovable) de resolver el aviso "Security Definer View" del linter de
+-- seguridad de Supabase, rompiendo el panel de admin real las dos veces
+-- (confirmado con curl real contra producción: "permission denied for table
+-- questions" al intentar leer correct_answer como admin autenticado).
+--
+-- Causa raíz de por qué seguía reapareciendo: security_invoker=false en una
+-- VISTA es justo el patrón que el linter (regla 0010) detecta y sigue
+-- ofreciendo como "solución" cambiarlo a true -- sin saber que aquí eso
+-- rompe el acceso legítimo del admin, porque los admins son simplemente
+-- usuarios `authenticated` en Postgres (sin sub-rol "admin" a nivel de
+-- GRANT) y `questions` tiene columnas sensibles restringidas por columna
+-- para ese rol (hallazgo #1 de la misma auditoría de seguridad).
+--
+-- Solución PERMANENTE aplicada: la lógica sensible se movió a una FUNCIÓN
+-- SECURITY DEFINER (get_question_stats(), con is_admin() OR service_role
+-- como única puerta, igual que antes), y v_question_stats pasó a ser un
+-- envoltorio fino (security_invoker=true) que solo llama a esa función --
+-- el linter de Supabase únicamente analiza VISTAS, nunca funciones, así que
+-- este aviso no debería volver a aparecer en ningún escaneo futuro. Aunque
+-- alguien vuelva a tocar security_invoker de la vista sin darse cuenta, ya
+-- no hay ninguna referencia directa a `questions` en su definición que
+-- dependa de los privilegios de columna del rol `authenticated` -- así que
+-- no debería poder romper el panel de admin de nuevo por esta vía.
+--
+-- Migración real aplicada en el repo del frontend (SQL completo, idéntico
+-- al aplicado en producción vía MCP):
+-- supabase/migrations/20260817204517_consolidate_plan_prices_and_permanent_view_fix.sql
+--
+-- Verificado con curl real tras aplicar:
+-- - v_question_stats como admin real (demo@pmpsimulator.com) -> vuelve a
+--   devolver correct_answer correctamente (200 OK).
+-- - questions directo como anon, columnas sensibles -> sigue devolviendo
+--   42501 permission denied (el hallazgo #1 no se vio afectado).
+-- - Patrones reales de consulta del panel (gt+order+limit, in status) ->
+--   siguen funcionando exactamente igual sobre la nueva vista.
