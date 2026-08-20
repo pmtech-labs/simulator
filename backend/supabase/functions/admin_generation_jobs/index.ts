@@ -81,11 +81,14 @@ Asigna un "error_type" (uno de estos 10 valores exactos) a CADA opción incorrec
 lleva error_type.
 
 TERMINOLOGÍA (obligatorio): esta pregunta se rige por PMBOK 8 (publicado ene 2026), NO por PMBOK 6/7.
-NUNCA nombres un proceso concreto al estilo PMBOK 6 (ej. "Realizar el Control Integrado de Cambios",
-"Desarrollar el Cronograma", "Recopilar Requisitos") ni uses "áreas de conocimiento" o "triple restricción"
-como términos -- PMBOK 8 organiza el contenido en 7 dominios de desempeño (Gobernanza, Alcance, Cronograma,
-Finanzas, Interesados, Recursos, Riesgo) y 6 principios, sin una lista cerrada de 49 procesos con nombre.
-Describe la situación por su dominio/decisión, no por el nombre de un proceso formal.
+NUNCA nombres un proceso concreto al estilo PMBOK 6 (ej. "Desarrollar el Cronograma", "Recopilar
+Requisitos") ni uses "áreas de conocimiento" o "triple restricción" como términos -- PMBOK 8 organiza
+el contenido en 7 dominios de desempeño (Gobernanza, Alcance, Cronograma, Finanzas, Interesados,
+Recursos, Riesgo) y 6 principios, sin una lista cerrada de 49 procesos con nombre. EXCEPCIÓN
+confirmada por la clave de respuestas real: "Realizar el control integrado de cambios" SÍ es
+vocabulario vivo del examen 2026 (14 apariciones en las 180 preguntas oficiales, forma heredada que
+el examen retiene aunque PMBOK 8 renombró la técnica) -- úsalo con normalidad cuando el contexto sea
+control de cambios, no lo trates como un proceso PMBOK 6 prohibido.
 
 ESTILO DE LA RESPUESTA CORRECTA (verificado contra la clave real de 152 preguntas oficiales del PMI con
 respuesta confirmada, agosto 2026 -- NO uses esto como regla mecánica): el patrón de "verbo analítico +
@@ -136,9 +139,11 @@ opciones (A, B, C, D, E). Las opciones correctas deben ser EXACTAMENTE ${targetM
 Las otras ${5 - targetMultiLetters.length} opciones son distractores individuales, cada uno incorrecto por
 sí solo aunque pueda parecer razonable. Esta pregunta solo se considera acertada si el candidato marca
 EXACTAMENTE esas ${targetMultiLetters.length} opciones, ninguna más y ninguna menos -- constrúyela así
-desde el principio. El enunciado debe indicar cuántas opciones elegir (ej. "Seleccione ${targetMultiLetters.length}
-opciones"), o usar "Seleccione todas las opciones que correspondan" si tiene más sentido narrativo, siempre
-que EXACTAMENTE ${targetMultiLetters.length} sean correctas.`
+desde el principio. El enunciado debe usar exactamente esta fórmula según N (confirmado con la clave real
+del lote B, §10.2 del spec de terminología): si N=${targetMultiLetters.length} es 3, usa "Seleccione todas
+las opciones que correspondan" (patrón confirmado: en el corpus oficial, el formato abierto "todas las que
+correspondan" tiene SIEMPRE 3 correctas de 5, nunca 2 ni 4); si N=${targetMultiLetters.length} es 2, usa la
+forma cerrada "Seleccione 2 opciones".`
     : `POSICIÓN DE LA RESPUESTA CORRECTA (obligatorio, no lo cambies): la opción correcta debe quedar en la
 posición "${targetLetter}". Es decir, "correct_answer" debe ser exactamente ["${targetLetter}"], y el
 resto de posiciones (A, B, C, D excluyendo "${targetLetter}") deben ser los distractores. Construye tu

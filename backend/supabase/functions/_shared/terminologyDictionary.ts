@@ -53,18 +53,19 @@ export const TERMINOS_ESTABLES = `
 - Assumption → "Supuesto" (creencia provisional) / Constraint → "Restricción" (límite real) -- ambos pueden generar riesgo si cambian
 - Monte Carlo → "Análisis/simulación de Montecarlo" (una palabra) en redacción propia nueva; "Monte Carlo" (dos palabras) es variante de examen reconocible
 - Multipoint Estimating → "Estimación multipunto" en redacción propia; "Estimación por tres valores"/"Estimación ponderada por tres valores" son variantes de examen reconocibles
+- Cost → "Costo" (NUNCA "Coste" -- 0 apariciones de "coste" en las 180 preguntas oficiales del examen real)
+- Product Owner ≠ Product Manager: "Dueño del producto" y "Gerente del producto" son roles PMI DISTINTOS y reconocidos por separado -- nunca tratarlos como sinónimos ni fusionarlos en una misma pregunta
 `.trim();
 
 // CATEGORÍA 2/3 -- variantes legítimas dentro del propio PMI: se elige una
 // principal para redactar contenido NUEVO, pero ambas formas son válidas y
 // pueden aparecer combinadas en la explicación para reforzar reconocimiento.
 export const VARIANTES_RECONOCIDAS = `
-- Issue → usar "Problema" como forma principal en preguntas nuevas (es la que domina en el corpus de examen real); "Incidente" es la forma formal PMBOK y debe reconocerse igualmente válida
-- Issue Log → "Registro de problemas" (examen) equivale a "Registro de incidentes" (PMBOK) -- mismo artefacto
+- Issue / Issue Log → usar SIEMPRE "Problema" / "Registro de problemas" al generar contenido nuevo -- confirmado con la clave de respuestas real de las 180 preguntas oficiales: 14 apariciones de "Registro de problemas", CERO de "Registro de incidentes", pese a que PMBOK 8 usa "Incidente" 31 veces. "Incidente" es vocabulario de PMBOK, no del examen -- reconocerlo si aparece en la respuesta de un candidato, pero el generador nunca debe producirlo activamente.
 - Status Report → "Informe de estatus" e "Informe de estado" son ambas válidas, sin preferencia fuerte
 - Mentoring → "Mentoría" como forma principal; "Tutoría" es variante descriptiva PMBOK igualmente válida
 - Técnicas de resolución de conflictos: usar "Suavizar/acomodar", "Colaborar/resolver problemas", "Forzar/dirigir", "Comprometer/conciliar", "Retirarse/evitar" (forma de examen, ligeramente distinta de "suavizar/ceder" y "comprometerse/conciliarse" de PMBOK -- mismo concepto)
-- Integrated Change Control → "Control integrado de cambios" es la forma que usa el banco de examen (orden de palabras distinto de "Control de cambios integrado" de PMBOK 8) -- usar la forma de examen en preguntas nuevas
+- Integrated Change Control (proceso/técnica) → el examen 2026 real usa la forma heredada "Realizar el control integrado de cambios" (14 apariciones confirmadas en las 180 preguntas oficiales), aunque PMBOK 8 renombró el proceso a "Evaluar e implementar cambios" con la técnica "control de cambios integrado" -- usar la forma del examen cuando el contexto lo pida. Esto NO es un "proceso PMBOK 6 prohibido": es terminología viva del examen real, distinta del resto de nombres de proceso PMBOK 6 (esos sí siguen prohibidos salvo que el corpus oficial confirme lo contrario, como aquí).
 - Project Scope Statement → "Enunciado del alcance del proyecto" como forma principal (PMBOK usa también "declaración del alcance" en algún punto -- mismo documento)
 - Project Management Plan → "Plan para la dirección del proyecto" (NUNCA confundir con los planes subsidiarios, que sí usan "Plan DE GESTIÓN de X": plan de gestión del alcance, plan de gestión de los riesgos, etc.)
 - Backlog Refinement → "Perfeccionamiento de la lista de trabajo pendiente" como forma principal de examen ("Refinamiento del trabajo pendiente" es variante PMBOK)
@@ -111,6 +112,14 @@ algoritmo rígido, el contexto de cada escenario manda, pero es una pauta muy s�
 6. Alinear antes de formalizar cuando todavía no existe acuerdo: facilitar discusión →
    alineación → documentación/comunicación.
 7. Analizar antes de negociar cambios importantes: analizar impacto → negociar condiciones.
+
+Conteos reales confirmados sobre las 180 preguntas oficiales (diccionario terminológico, Bloque 14):
+evaluar (57), revisar (65), determinar (46), actualizar (39), analizar (36), identificar (36),
+escalar (25), priorizar (19). Regla explícita: el verbo de la opción CORRECTA casi siempre
+pertenece a este set (identificar/evaluar/analizar/revisar/consultar/facilitar/determinar) --
+NUNCA "escalar", "reemplazar", "cancelar", "rechazar" o "aprobar" como PRIMER verbo de la opción
+correcta, salvo que el propio enunciado indique explícitamente que el paso de análisis previo ya
+se completó.
 `.trim();
 
 /** Bloque compacto para inyectar en los generadores de preguntas

@@ -1,15 +1,27 @@
 // Edge Function: admin_questions
 //
+// Vocabulario de la interfaz (acordado con el PO, ago 2026) vs. el enum real de la BD --
+// el enum de la columna `status` NO cambió (sigue siendo draft/published/retired), solo
+// se aclara aquí la correspondencia para evitar confusiones al leer este código:
+//   - "Retirar" en la UI = published -> draft (sacar del catálogo activo, sin motivo,
+//     reversible en cualquier momento -- la pregunta puede reeditarse/republicarse).
+//   - "Rechazar" en la UI = draft -> retired (excluir un borrador que no cumple calidad,
+//     CON motivo obligatorio -- se guarda en question_rejections para que los generadores
+//     aprendan de ese motivo en futuras generaciones de la misma tarea, ver
+//     buildRejectionContext en _shared/rejectionContext.ts).
+//
 // GET    -> lista preguntas para la cola de revisión, con filtros (status, domain_code, task_id,
 //           approach, job_id, min_times_used, max_success_rate) y paginación. Usa v_question_stats,
 //           que ya trae el contenido completo + estadísticas agregadas en una sola vista.
-// PATCH  -> cambia el status de una o varias preguntas (draft -> published, o -> retired para
-//           sacarla del pool de selección sin borrar histórico). Simplificado de 5 a 3 estados:
+// PATCH  -> cambia el status de una o varias preguntas (draft -> published, draft -> retired
+//           para "rechazar", published -> draft para "retirar"). Simplificado de 5 a 3 estados:
 //           in_review y approved no tenían ninguna lógica funcional distinta de draft/published,
 //           eran papeleo sin efecto real -- se quitaron.
 // DELETE -> borrado físico, permitido ÚNICAMENTE si la pregunta nunca ha sido usada en
 //           ningún examen (exam_items). Si ya se usó, se fuerza a 'retired' en su lugar
-//           y se informa por qué, para no romper la trazabilidad de exámenes ya realizados.
+//           (mismo estado que "rechazar", aunque aquí no es un fallo de calidad sino una
+//           cuestión de integridad de datos) y se informa por qué, para no romper la
+//           trazabilidad de exámenes ya realizados.
 
 import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
 import { requireAdmin } from "../_shared/adminAuth.ts";

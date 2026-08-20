@@ -18,9 +18,13 @@
 // Filtrado aplicado al LOTE A antes de incluir cualquier pregunta:
 // - Excluidas Q25, Q51, Q148 (marcadas como inválidas/inconsistentes/corruptas por la
 //   propia spec de extracción del PO).
-// - Excluidas Q114 y Q169: citan literalmente el proceso PMBOK 6 "Realizar el Control
-//   Integrado de Cambios" -- justo el patrón que la nueva regla de terminología (ver
-//   buildSystemPrompt) prohíbe. Se prefirió excluirlas antes que editarlas.
+// - Excluidas Q114 y Q169: en su momento se excluyeron por citar "Realizar el Control
+//   Integrado de Cambios", asumiendo que era terminología PMBOK 6 prohibida -- el spec de
+//   extracción actualizado (ago 2026) confirmó con la clave de respuestas real que esa frase
+//   SÍ es vocabulario vivo del examen 2026 (14 apariciones en las 180 preguntas oficiales), así
+//   que esta exclusión ya no aplicaría hoy. Se mantienen fuera del pool por prudencia (no se ha
+//   vuelto a revisar su calidad completa más allá de este punto terminológico), no por el motivo
+//   original.
 // - Excluidas preguntas con residuos de limpieza deficiente (frases en inglés pegadas,
 //   cabeceras de tabla sin traducir).
 // - Excluidas también preguntas con "activos de los procesos organizativos" (término de

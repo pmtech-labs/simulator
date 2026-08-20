@@ -140,10 +140,13 @@ cuándo NO escalar pese a presión de un interesado sénior, integridad/transpar
 adaptar la comunicación a audiencias con intereses divergentes, realización de beneficios post-entrega.
 
 TERMINOLOGÍA (obligatorio): el caso se rige por PMBOK 8 (publicado ene 2026), NO por PMBOK 6/7. NUNCA
-nombres un proceso concreto al estilo PMBOK 6 (ej. "Realizar el Control Integrado de Cambios", "Desarrollar
-el Cronograma") ni uses "áreas de conocimiento" o "triple restricción" -- PMBOK 8 organiza el contenido en
-7 dominios de desempeño y 6 principios, sin una lista cerrada de 49 procesos con nombre. Describe la
-situación por su dominio/decisión, no por el nombre de un proceso formal.
+nombres un proceso concreto al estilo PMBOK 6 (ej. "Desarrollar el Cronograma", "Recopilar Requisitos")
+ni uses "áreas de conocimiento" o "triple restricción" -- PMBOK 8 organiza el contenido en 7 dominios de
+desempeño y 6 principios, sin una lista cerrada de 49 procesos con nombre. EXCEPCIÓN confirmada por la
+clave de respuestas real: "Realizar el control integrado de cambios" SÍ es vocabulario vivo del examen
+2026 (14 apariciones en las 180 preguntas oficiales) -- úsalo con normalidad, no lo trates como
+proceso PMBOK 6 prohibido. Describe el resto de situaciones por su dominio/decisión, no por el nombre
+de un proceso formal.
 ${terminologiaObligatoria()}
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks, con esta forma exacta:

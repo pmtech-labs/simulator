@@ -51,9 +51,12 @@ emparejamiento. Cada definición debe ser inequívoca (que solo pueda emparejars
 no con varios) y estar redactada en tus propias palabras, nunca copiada de ninguna fuente.
 
 TERMINOLOGÍA (obligatorio): esto se rige por PMBOK 8 (publicado ene 2026), NO por PMBOK 6/7. NUNCA nombres
-un proceso concreto al estilo PMBOK 6 (ej. "Realizar el Control Integrado de Cambios") ni uses "áreas de
-conocimiento" o "triple restricción" -- PMBOK 8 organiza el contenido en 7 dominios de desempeño y 6
-principios, sin una lista cerrada de 49 procesos con nombre.
+un proceso concreto al estilo PMBOK 6 (ej. "Desarrollar el Cronograma", "Recopilar Requisitos") ni uses
+"áreas de conocimiento" o "triple restricción" -- PMBOK 8 organiza el contenido en 7 dominios de desempeño
+y 6 principios, sin una lista cerrada de 49 procesos con nombre. EXCEPCIÓN confirmada por la clave de
+respuestas real: "Realizar el control integrado de cambios" SÍ es vocabulario vivo del examen 2026 (14
+apariciones en las 180 preguntas oficiales) -- úsalo con normalidad, no lo trates como proceso PMBOK 6
+prohibido.
 ${terminologiaCompacta()}
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:
