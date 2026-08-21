@@ -29,7 +29,11 @@ interface CreateClusterJobBody {
   task_ids: string[];
   approach?: "predictive" | "agile" | "hybrid";
   clusters_requested: number;
-  questions_per_cluster?: number; // 3-5, por defecto aleatorio en ese rango
+  questions_per_cluster?: number; // siempre 5 por defecto -- hallazgo real del PO: con el
+  // rango aleatorio anterior (3-5) aparecían escenarios incompletos en el banco (10 con
+  // solo 3 preguntas, 3 con solo 4), rompiendo la estructura real de caso del ECO 2026.
+  // Se deja el parámetro por si algún día se necesita un cluster más corto a propósito,
+  // pero el valor por defecto ya no es aleatorio.
   difficulty_min?: number;
   difficulty_max?: number;
 }
@@ -296,7 +300,7 @@ Deno.serve(async (req) => {
   for (let c = 0; c < body.clusters_requested; c++) {
     const taskId = body.task_ids[c % body.task_ids.length];
     const approach = approaches[c % approaches.length];
-    const questionsCount = body.questions_per_cluster ?? (3 + Math.floor(Math.random() * 3)); // 3-5
+    const questionsCount = body.questions_per_cluster ?? 5;
     const targetLetters = Array.from({ length: questionsCount }, (_, idx) => ["A", "B", "C", "D"][(c + idx) % 4]);
     const targetDifficulties = Array.from({ length: questionsCount }, () => Math.floor(Math.random() * (diffMax - diffMin + 1)) + diffMin);
     const targetProcessGroup = WEIGHTED_PROCESS_GROUPS[c % WEIGHTED_PROCESS_GROUPS.length];
@@ -316,7 +320,7 @@ Deno.serve(async (req) => {
         { provider: connectorRow.provider, model_id: connectorRow.model_id, api_base_url: connectorRow.api_base_url, apiKey },
         buildSystemPrompt(),
         buildUserPrompt(task, approach, questionsCount, targetLetters, targetDifficulties, targetProcessGroup, targetThemes, targetPerformanceDomain, rejectionContext),
-        5000, // un cluster completo (escenario + 3-5 preguntas con opciones+explicación) necesita mucho más espacio que una pregunta suelta (1200 por defecto truncaba el JSON a mitad)
+        5000, // un cluster completo (escenario + 5 preguntas con opciones+explicación) necesita mucho más espacio que una pregunta suelta (1200 por defecto truncaba el JSON a mitad) -- ya probado suficiente, 9 de los 22 clusters existentes ya llegaron a 5 preguntas completas con este mismo límite
       );
 
       const cleaned = result.text.replace(/```json|```/g, "").trim();

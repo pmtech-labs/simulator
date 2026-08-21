@@ -122,6 +122,57 @@ correcta, salvo que el propio enunciado indique explícitamente que el paso de a
 se completó.
 `.trim();
 
+// Feedback directo del PO tras revisar preguntas reales del banco (ago 2026),
+// con ejemplo real citado por el propio PO: la pregunta #5 del banco tenía
+// las opciones B ("...sin más acción") y D ("...sin evaluarlo primero") con
+// coletillas que confiesan por qué están mal, mientras que la opción correcta
+// (C) no llevaba ninguna coletilla -- el candidato podía adivinar la correcta
+// por estilo de redacción, sin razonar sobre el escenario.
+export const CALIDAD_DISTRACTORES = `
+COLETILLAS QUE DELATAN LA RESPUESTA (prohibido, hallazgo real del PO sobre el banco): nunca
+añadas una frase final que confiese por qué una opción incorrecta está mal -- ej. "sin evaluarlo
+primero", "sin más acción", "sin analizar", "sin consultar a nadie", "de forma automática",
+"pasivamente", "sin razón aparente". Una opción incorrecta debe sonar PLAUSIBLE y COMPLETA por sí
+sola, exactamente con la misma extensión y tono profesional que la opción correcta -- el candidato
+debe distinguirla razonando sobre el escenario, no leyendo una admisión de culpa incorporada en el
+texto. Si te descubres añadiendo "sin...", "porque no...", o cualquier cláusula que explique el
+fallo, bórrala y deja la acción desnuda; el error_type ya clasifica por qué falla, no hace falta
+que el propio texto lo delate también.
+
+VERBOS DEMASIADO OBVIOS EN DISTRACTORES (hallazgo real del PO): "forzar", "ignorar", "dejar de",
+"ocultar", "posponer", "imponer" son acciones que el propio PMI marca como incorrectas de forma tan
+clara que, si una opción EMPIEZA literalmente por uno de estos verbos, el candidato la descarta sin
+razonar el escenario -- rompe el propósito del distractor. Puedes seguir construyendo distractores
+que describan esa MISMA mala práctica de fondo (forzar una decisión, ignorar una señal, ocultar un
+problema...), pero nunca la encabeces con ese verbo tan explícito -- redáctala de forma más sutil,
+integrada en una acción que suene razonable a primera vista (ej. en vez de "Ignorar la queja del
+interesado y continuar con el plan", mejor "Continuar con el plan original según lo previsto,
+priorizando cumplir el cronograma acordado" -- el mismo fallo de fondo, sin la palabra delatora).
+
+CALIBRACIÓN REAL DE DIFICULTAD (hallazgo real del PO: preguntas marcadas 3/4/5 que en realidad eran
+sencillas): la dificultad no es una etiqueta que se declara, tiene que construirse en el propio
+contenido. Guía concreta por nivel:
+- 1-2 (fácil): la opción correcta es claramente la más profesional/completa, los 3 distractores
+  fallan por motivos obvios y distintos entre sí (uno de cada tipo de error), sin cálculos ni datos
+  a cruzar, escenario corto y directo.
+- 3 (medio): al menos 2 opciones suenan igual de razonables a primera lectura y hay que fijarse en
+  UN dato concreto del enunciado (momento del proyecto, rol de quien pregunta, un número, una
+  restricción) para descartar la que parece correcta pero no lo es.
+- 4-5 (difícil): 2-3 opciones son genuinamente plausibles y profesionales, la diferencia está en un
+  matiz sutil (secuencia correcta pero en el momento equivocado, la persona correcta pero el canal
+  equivocado, o requiere combinar 2 datos del enunciado a la vez, o un cálculo con varios pasos).
+  Cuantas más opciones podrían defenderse razonablemente, más alta es la dificultad real -- no la
+  cantidad de palabras del enunciado ni la jerga usada.
+
+ENUNCIADOS SIEMPRE SITUACIONALES (hallazgo real del PO: enunciados demasiado teóricos o ambiguos):
+cada enunciado debe describir una SITUACIÓN concreta con un proyecto, un momento y una decisión
+pendiente -- nunca una pregunta de definición/teoría pura ("¿Qué es el valor ganado?", "¿Cuál de las
+siguientes es una técnica de estimación?") ni un enunciado tan corto o genérico que podría aplicar a
+cualquier proyecto sin cambiar nada. Si al quitar los nombres propios y el contexto la pregunta
+sigue leyéndose exactamente igual, es demasiado genérica -- añade un dato concreto (una cifra, un
+interesado con nombre, una restricción específica de ESE proyecto) que ancle el escenario.
+`.trim();
+
 /** Bloque compacto para inyectar en los generadores de preguntas
  * (admin_generation_jobs, admin_generate_case_cluster) -- obligatorio, no
  * opcional. Incluye los términos estables + el patrón PRIMERO, que juntos son
@@ -136,7 +187,9 @@ ${TERMINOS_ESTABLES}
 REGLAS CONCEPTUALES (no son solo vocabulario, cambian el razonamiento correcto de la pregunta):
 ${REGLAS_CONCEPTUALES}
 
-${PATRON_PRIMERO}`;
+${PATRON_PRIMERO}
+
+${CALIDAD_DISTRACTORES}`;
 }
 
 /** Versión reducida para generadores con menos presupuesto de contexto
