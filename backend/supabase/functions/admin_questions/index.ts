@@ -1,27 +1,31 @@
 // Edge Function: admin_questions
 //
-// Vocabulario de la interfaz (acordado con el PO, ago 2026) vs. el enum real de la BD --
-// el enum de la columna `status` NO cambió (sigue siendo draft/published/retired), solo
-// se aclara aquí la correspondencia para evitar confusiones al leer este código:
-//   - "Retirar" en la UI = published -> draft (sacar del catálogo activo, sin motivo,
-//     reversible en cualquier momento -- la pregunta puede reeditarse/republicarse).
-//   - "Rechazar" en la UI = draft -> retired (excluir un borrador que no cumple calidad,
-//     CON motivo obligatorio -- se guarda en question_rejections para que los generadores
-//     aprendan de ese motivo en futuras generaciones de la misma tarea, ver
-//     buildRejectionContext en _shared/rejectionContext.ts).
+// Esquema de estados (ago 2026): el enum de la columna `status` pasó de 3 a 4
+// valores -- draft/published/rejected/retired -- tras una corrección posterior del
+// PO sobre un primer intento que reutilizaba 'retired' para dos conceptos distintos:
+//   - "Rechazar" en la UI = draft -> rejected (excluir un borrador que no cumple
+//     calidad, CON motivo obligatorio -- se guarda en question_rejections para que
+//     los generadores aprendan de ese motivo en futuras generaciones de la misma
+//     tarea, ver buildRejectionContext en _shared/rejectionContext.ts).
+//   - "Retirar" en la UI = published -> retired (sacar del catálogo activo de examen
+//     una pregunta que SÍ llegó a publicarse, sin motivo obligatorio -- no es un
+//     fallo de calidad del contenido en sí, es una decisión de catálogo).
+//   - "Volver a borrador" = cualquier estado -> draft, sin motivo, plenamente
+//     reversible (la pregunta puede reeditarse y volver a pasar por el flujo).
 //
 // GET    -> lista preguntas para la cola de revisión, con filtros (status, domain_code, task_id,
 //           approach, job_id, min_times_used, max_success_rate) y paginación. Usa v_question_stats,
 //           que ya trae el contenido completo + estadísticas agregadas en una sola vista.
-// PATCH  -> cambia el status de una o varias preguntas (draft -> published, draft -> retired
-//           para "rechazar", published -> draft para "retirar"). Simplificado de 5 a 3 estados:
-//           in_review y approved no tenían ninguna lógica funcional distinta de draft/published,
-//           eran papeleo sin efecto real -- se quitaron.
+// PATCH  -> cambia el status de una o varias preguntas entre los 4 valores válidos.
+//           Simplificado en su día de 5 a 3 estados (in_review y approved no tenían
+//           ninguna lógica funcional distinta de draft/published, eran papeleo sin
+//           efecto real -- se quitaron), y ampliado después a 4 al separar
+//           "rechazar" de "retirar" (ver arriba).
 // DELETE -> borrado físico, permitido ÚNICAMENTE si la pregunta nunca ha sido usada en
 //           ningún examen (exam_items). Si ya se usó, se fuerza a 'retired' en su lugar
-//           (mismo estado que "rechazar", aunque aquí no es un fallo de calidad sino una
-//           cuestión de integridad de datos) y se informa por qué, para no romper la
-//           trazabilidad de exámenes ya realizados.
+//           (cuestión de integridad de datos, no de calidad -- por eso usa 'retired' y
+//           no 'rejected') y se informa por qué, para no romper la trazabilidad de
+//           exámenes ya realizados.
 
 import { getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabaseAdmin.ts";
 import { requireAdmin } from "../_shared/adminAuth.ts";
@@ -29,8 +33,8 @@ import { corsHeaders, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 interface UpdateStatusBody {
   question_ids: string[];
-  status: "draft" | "published" | "retired";
-  // Motivo de rechazo (obligatorio en la práctica cuando status="retired" viene del
+  status: "draft" | "published" | "rejected" | "retired";
+  // Motivo de rechazo (obligatorio en la práctica cuando status="rejected" viene del
   // flujo de revisión del PO, aunque no se fuerza aquí para no romper el fallback
   // automático de DELETE, que retira sin motivo cuando la pregunta ya se usó en un examen).
   reason?: string;
@@ -124,17 +128,23 @@ Deno.serve(async (req) => {
 
     if (error) return errorResponse(error.message, 500);
 
-    // Petición del PO: al retirar una pregunta durante la revisión de calidad, guardar
+    // Petición del PO: al RECHAZAR una pregunta durante la revisión de calidad, guardar
     // el motivo en question_rejections -- alimenta la generación futura para no repetir
     // los mismos errores (ver _shared/rejectionContext.ts, usado por los generadores).
-    if (body.status === "retired" && body.reason?.trim()) {
-      const { data: retiredQuestions } = await admin
+    // BUG encontrado (ago 2026): tras añadir el 4º estado 'rejected' (distinto de
+    // 'retired', que ahora significa "publicada y sacada del catálogo", no "rechazada
+    // desde borrador"), esta condición seguía comprobando 'retired' -- el motivo de
+    // rechazo dejaba de guardarse silenciosamente pese a que la actualización de status
+    // funcionaba bien y la UI mostraba éxito. Verificado con una llamada real: el status
+    // se actualizaba a 'rejected' correctamente pero question_rejections quedaba vacío.
+    if (body.status === "rejected" && body.reason?.trim()) {
+      const { data: rejectedQuestions } = await admin
         .from("questions")
         .select("id, question_number, task_id, format, stem")
         .in("id", body.question_ids);
 
-      if (retiredQuestions?.length) {
-        const rejectionRows = retiredQuestions.map((q: any) => ({
+      if (rejectedQuestions?.length) {
+        const rejectionRows = rejectedQuestions.map((q: any) => ({
           question_id: q.id,
           question_number: q.question_number,
           task_id: q.task_id,
